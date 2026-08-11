@@ -14,6 +14,68 @@ import type {
 } from "@poca/shared";
 import { PrismaService } from "../prisma/prisma.module";
 
+type TransactionRecord = {
+  id: string;
+  amount: { toString(): string };
+  currency: string;
+  description: string;
+  merchant: string | null;
+  bookedAt: Date;
+};
+
+function toNumber(value: { toString(): string }): number {
+  return parseFloat(value.toString());
+}
+
+function computeStats(transactions: TransactionRecord[]) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let totalIncome = 0;
+  let totalSpent = 0;
+  let thisMonthIncome = 0;
+  let thisMonthSpent = 0;
+
+  for (const tx of transactions) {
+    const amount = toNumber(tx.amount);
+    const bookedAt = tx.bookedAt;
+
+    if (amount >= 0) {
+      totalIncome += amount;
+      if (bookedAt >= monthStart) {
+        thisMonthIncome += amount;
+      }
+    } else {
+      totalSpent += Math.abs(amount);
+      if (bookedAt >= monthStart) {
+        thisMonthSpent += Math.abs(amount);
+      }
+    }
+  }
+
+  const transactionCount = transactions.length;
+  const totalVolume = transactions.reduce(
+    (sum, tx) => sum + Math.abs(toNumber(tx.amount)),
+    0,
+  );
+
+  return {
+    totalIncome: roundMoney(totalIncome),
+    totalSpent: roundMoney(totalSpent),
+    netFlow: roundMoney(totalIncome - totalSpent),
+    transactionCount,
+    avgTransactionSize: roundMoney(
+      transactionCount > 0 ? totalVolume / transactionCount : 0,
+    ),
+    thisMonthIncome: roundMoney(thisMonthIncome),
+    thisMonthSpent: roundMoney(thisMonthSpent),
+  };
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 @Injectable()
 export class BankService {
   private provider: BankConnectProvider;
@@ -115,6 +177,145 @@ export class BankService {
       sessionId: session.id,
       accountCount: session.accountIds.length,
       status: BankConnectionStatus.LINKED,
+    };
+  }
+
+  async listConnections() {
+    const user = await this.ensureDemoUser();
+    const connections = await this.prisma.bankConnection.findMany({
+      where: { userId: user.id },
+      include: {
+        accounts: {
+          include: {
+            _count: { select: { transactions: true } },
+          },
+        },
+      },
+      orderBy: { institutionName: "asc" },
+    });
+
+    return connections.map((connection) => ({
+      id: connection.id,
+      institutionId: connection.institutionId,
+      institutionName: connection.institutionName,
+      status: connection.status,
+      lastSyncedAt: connection.lastSyncedAt,
+      lastError: connection.lastError,
+      createdAt: connection.createdAt,
+      accounts: connection.accounts.map((account) => ({
+        id: account.id,
+        name: account.name,
+        iban: account.iban,
+        currentBalance: toNumber(account.currentBalance),
+        currency: account.currency,
+        transactionCount: account._count.transactions,
+      })),
+    }));
+  }
+
+  async getDashboard(bankConnectionId?: string) {
+    const user = await this.ensureDemoUser();
+
+    const connections = await this.prisma.bankConnection.findMany({
+      where: {
+        userId: user.id,
+        ...(bankConnectionId ? { id: bankConnectionId } : {}),
+      },
+      include: {
+        accounts: {
+          include: {
+            transactions: {
+              orderBy: { bookedAt: "desc" },
+            },
+            _count: { select: { transactions: true } },
+          },
+        },
+      },
+      orderBy: { institutionName: "asc" },
+    });
+
+    const allConnections = await this.prisma.bankConnection.findMany({
+      where: { userId: user.id },
+      select: { id: true, institutionName: true, status: true },
+      orderBy: { institutionName: "asc" },
+    });
+
+    const dashboardConnections = connections.map((connection) => {
+      const connectionTransactions = connection.accounts.flatMap(
+        (account) => account.transactions,
+      );
+      const totalBalance = connection.accounts.reduce(
+        (sum, account) => sum + toNumber(account.currentBalance),
+        0,
+      );
+      const stats = computeStats(connectionTransactions);
+
+      return {
+        id: connection.id,
+        institutionId: connection.institutionId,
+        institutionName: connection.institutionName,
+        status: connection.status,
+        lastSyncedAt: connection.lastSyncedAt,
+        lastError: connection.lastError,
+        totalBalance: roundMoney(totalBalance),
+        accounts: connection.accounts.map((account) => ({
+          id: account.id,
+          name: account.name,
+          iban: account.iban,
+          currentBalance: toNumber(account.currentBalance),
+          currency: account.currency,
+          transactionCount: account._count.transactions,
+        })),
+        stats,
+      };
+    });
+
+    const transactions = connections
+      .flatMap((connection) =>
+        connection.accounts.flatMap((account) =>
+          account.transactions.map((tx) => ({
+            id: tx.id,
+            amount: toNumber(tx.amount),
+            currency: tx.currency,
+            description: tx.description,
+            merchant: tx.merchant,
+            bookedAt: tx.bookedAt.toISOString(),
+            accountId: account.id,
+            accountName: account.name,
+            accountIban: account.iban,
+            bankConnectionId: connection.id,
+            institutionName: connection.institutionName,
+          })),
+        ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime(),
+      );
+
+    const allTransactions = connections.flatMap((connection) =>
+      connection.accounts.flatMap((account) => account.transactions),
+    );
+    const overallBalance = connections.reduce(
+      (sum, connection) =>
+        sum +
+        connection.accounts.reduce(
+          (accountSum, account) =>
+            accountSum + toNumber(account.currentBalance),
+          0,
+        ),
+      0,
+    );
+    const overallStats = {
+      ...computeStats(allTransactions),
+      totalBalance: roundMoney(overallBalance),
+    };
+
+    return {
+      connections: allConnections,
+      banks: dashboardConnections,
+      transactions,
+      stats: overallStats,
     };
   }
 

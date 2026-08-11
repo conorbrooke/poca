@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { apiFetchHeaders, apiUrl } from "../../../lib/api";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiFetch } from "../../../lib/api";
+
+type CallbackResult = {
+  connectionId: string;
+  accountCount: number;
+  status: string;
+};
+
+type SyncResult = {
+  syncedCount: number;
+};
 
 export function BankCallbackClient() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [message, setMessage] = useState("Completing bank connection…");
   const [error, setError] = useState<string | null>(null);
 
@@ -18,41 +30,59 @@ export function BankCallbackClient() {
       return;
     }
 
-    fetch(apiUrl("/bank/callback"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...apiFetchHeaders(),
-      },
-      body: JSON.stringify({ code, state }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = await res.text();
-          throw new Error(body || `Request failed (${res.status})`);
-        }
-        return res.json();
-      })
-      .then((data) => {
+    async function completeFlow() {
+      try {
+        const result = await apiFetch<CallbackResult>("/bank/callback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, state }),
+        });
+
+        setMessage("Bank connected. Syncing your latest transactions…");
+
+        const sync = await apiFetch<SyncResult>("/bank/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bankConnectionId: result.connectionId }),
+        });
+
         setMessage(
-          `Connected successfully — ${data.accountCount} account(s) linked.`,
+          `All set — ${result.accountCount} account(s) linked, ${sync.syncedCount} transaction(s) synced.`,
         );
-      })
-      .catch((err: Error) => {
-        setError(err.message);
-      });
-  }, [searchParams]);
+
+        setTimeout(() => {
+          router.push(`/dashboard?bank=${result.connectionId}`);
+        }, 1500);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Connection failed");
+      }
+    }
+
+    void completeFlow();
+  }, [searchParams, router]);
 
   return (
-    <main style={{ maxWidth: 560, margin: "4rem auto", padding: "0 1.5rem" }}>
-      <h1 style={{ fontSize: "1.5rem", marginBottom: "1rem" }}>
-        Bank connection
-      </h1>
+    <div className="page" style={{ maxWidth: 560 }}>
+      <header className="page-header">
+        <p className="page-eyebrow">Bank connection</p>
+        <h1 className="page-title">
+          {error ? "Connection failed" : "Almost there"}
+        </h1>
+      </header>
+
       {error ? (
-        <p style={{ color: "#f87171" }}>{error}</p>
+        <>
+          <div className="alert alert-error">{error}</div>
+          <Link href="/sync" className="btn btn-secondary">
+            Back to connect
+          </Link>
+        </>
       ) : (
-        <p style={{ color: "var(--accent, #3dd68c)" }}>{message}</p>
+        <div className="card" style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
+          <span className="loading-spinner" />
+          <p style={{ color: "var(--accent)" }}>{message}</p>
+        </div>
       )}
-    </main>
+    </div>
   );
 }

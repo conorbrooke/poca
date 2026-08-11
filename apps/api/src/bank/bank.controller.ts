@@ -3,6 +3,7 @@ import {
   completeBankLinkSchema,
   connectionIdParamSchema,
   createBankLinkSchema,
+  dashboardQuerySchema,
   listInstitutionsQuerySchema,
   syncTransactionsSchema,
 } from "@poca/shared";
@@ -43,6 +44,11 @@ export class BankController {
     return this.bankService.completeLink(input);
   }
 
+  @Get("connections")
+  listConnections() {
+    return this.bankService.listConnections();
+  }
+
   @Get("connections/:id")
   getConnection(@Param() params: unknown) {
     const { id } = parseOrThrow(
@@ -61,5 +67,15 @@ export class BankController {
       "Sync transactions body",
     );
     return this.bankService.syncTransactions(input);
+  }
+
+  @Get("dashboard")
+  getDashboard(@Query() query: unknown) {
+    const { bankConnectionId } = parseOrThrow(
+      dashboardQuerySchema,
+      query,
+      "Dashboard query",
+    );
+    return this.bankService.getDashboard(bankConnectionId);
   }
 }

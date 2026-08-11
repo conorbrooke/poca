@@ -38,6 +38,12 @@ export const connectionIdParamSchema = z.object({
 
 export type ConnectionIdParam = z.infer<typeof connectionIdParamSchema>;
 
+export const dashboardQuerySchema = z.object({
+  bankConnectionId: z.string().min(1).optional(),
+});
+
+export type DashboardQuery = z.infer<typeof dashboardQuerySchema>;
+
 /** Common Irish banks — use institution list from API for exact IDs */
 export const IRISH_BANK_NAMES = [
   "Allied Irish Banks",

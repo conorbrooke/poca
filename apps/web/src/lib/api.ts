@@ -15,3 +15,28 @@ export function apiUrl(path: string): string {
   }
   return `${base.replace(/\/$/, "")}${path}`;
 }
+
+export async function apiFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const headers = new Headers(init?.headers);
+  const extra = apiFetchHeaders();
+  for (const [key, value] of Object.entries(extra)) {
+    if (typeof value === "string") {
+      headers.set(key, value);
+    }
+  }
+
+  const res = await fetch(apiUrl(path), {
+    ...init,
+    headers,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Request failed (${res.status})`);
+  }
+
+  return res.json() as Promise<T>;
+}
