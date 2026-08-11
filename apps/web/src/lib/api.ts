@@ -1,6 +1,6 @@
 /** Headers for fetches to ngrok free-tier URLs (avoids browser warning interstitial). */
 export function apiFetchHeaders(): HeadersInit {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+  const apiUrl = getApiBase();
   const headers: HeadersInit = {};
   if (apiUrl.includes("ngrok")) {
     headers["ngrok-skip-browser-warning"] = "true";
@@ -8,12 +8,24 @@ export function apiFetchHeaders(): HeadersInit {
   return headers;
 }
 
-export function apiUrl(path: string): string {
+function getApiBase(): string {
   const base = process.env.NEXT_PUBLIC_API_URL;
   if (!base) {
     throw new Error("NEXT_PUBLIC_API_URL is not set");
   }
-  return `${base.replace(/\/$/, "")}${path}`;
+  return base.replace(/\/$/, "");
+}
+
+/** Browser-safe API path. Use /api/backend proxy on Vercel → ngrok to avoid CORS. */
+export function apiUrl(path: string): string {
+  const base = getApiBase();
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (base === "/api/backend" || base.endsWith("/api/backend")) {
+    return `/api/backend${normalizedPath}`;
+  }
+
+  return `${base}${normalizedPath}`;
 }
 
 export async function apiFetch<T>(

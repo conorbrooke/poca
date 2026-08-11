@@ -20,6 +20,12 @@ async function bootstrap() {
   app.enableCors({
     origin: getCorsOrigins(),
     credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "ngrok-skip-browser-warning",
+    ],
   });
 
   const port = process.env.API_PORT ?? 3001;
