@@ -1,11 +1,24 @@
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 
+function getCorsOrigins(): string[] {
+  const fromEnv = process.env.CORS_ORIGINS?.split(",").map((o) => o.trim());
+  if (fromEnv?.length) {
+    return fromEnv;
+  }
+
+  const origins = ["http://localhost:3000"];
+  if (process.env.WEB_URL) {
+    origins.push(process.env.WEB_URL);
+  }
+  return origins;
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: process.env.WEB_URL ?? "http://localhost:3000",
+    origin: getCorsOrigins(),
     credentials: true,
   });
 

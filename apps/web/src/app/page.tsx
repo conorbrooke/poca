@@ -1,10 +1,12 @@
 import { IRISH_BANK_NAMES } from "@poca/shared";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiFetchHeaders, apiUrl } from "../lib/api";
 
 async function getHealth() {
   try {
-    const res = await fetch(`${API_URL}/health`, { cache: "no-store" });
+    const res = await fetch(apiUrl("/health"), {
+      cache: "no-store",
+      headers: apiFetchHeaders(),
+    });
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -14,8 +16,9 @@ async function getHealth() {
 
 async function getInstitutions() {
   try {
-    const res = await fetch(`${API_URL}/bank/institutions?country=IE`, {
+    const res = await fetch(apiUrl("/bank/institutions?country=IE"), {
       cache: "no-store",
+      headers: apiFetchHeaders(),
     });
     if (!res.ok) return [];
     return res.json() as Promise<

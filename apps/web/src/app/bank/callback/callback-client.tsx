@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiFetchHeaders, apiUrl } from "../../../lib/api";
 
 export function BankCallbackClient() {
   const searchParams = useSearchParams();
@@ -14,14 +13,17 @@ export function BankCallbackClient() {
     const code = searchParams.get("code");
     const state = searchParams.get("state");
 
-    if (!code || !state || !API_URL) {
-      setError("Missing authorisation code, state, or API URL.");
+    if (!code || !state) {
+      setError("Missing authorisation code or state from your bank.");
       return;
     }
 
-    fetch(`${API_URL}/bank/callback`, {
+    fetch(apiUrl("/bank/callback"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...apiFetchHeaders(),
+      },
       body: JSON.stringify({ code, state }),
     })
       .then(async (res) => {
