@@ -1,0 +1,145 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BankProvider {
+  ENABLE_BANKING
+  GOCARDLESS
+  CSV
+  MANUAL
+}
+
+enum BankConnectionStatus {
+  PENDING
+  LINKED
+  EXPIRED
+  ERROR
+}
+
+enum SyncJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts         Account[]
+  bankConnections  BankConnection[]
+  categories       Category[]
+  syncJobs         SyncJob[]
+
+  @@index([email])
+}
+
+model BankConnection {
+  id              String               @id @default(cuid())
+  userId          String
+  provider        BankProvider         @default(ENABLE_BANKING)
+  institutionId   String
+  institutionName String
+  requisitionId   String?              @unique
+  status          BankConnectionStatus @default(PENDING)
+  consentExpiresAt DateTime?
+  lastSyncedAt    DateTime?
+  lastError       String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts Account[]
+
+  @@index([userId])
+  @@index([requisitionId])
+  @@index([status])
+}
+
+model Account {
+  id               String       @id @default(cuid())
+  userId           String
+  bankConnectionId String?
+  externalId       String?
+  name             String
+  iban             String?
+  currency         String       @default("EUR")
+  provider         BankProvider @default(MANUAL)
+  currentBalance   Decimal      @default(0) @db.Decimal(14, 2)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankConnection BankConnection? @relation(fields: [bankConnectionId], references: [id], onDelete: SetNull)
+  transactions   Transaction[]
+
+  @@unique([userId, externalId])
+  @@index([userId])
+  @@index([bankConnectionId])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  color     String   @default("#6366f1")
+  icon      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  accountId   String
+  categoryId  String?
+  externalId  String?
+  amount      Decimal  @db.Decimal(14, 2)
+  currency    String   @default("EUR")
+  description String
+  merchant    String?
+  bookedAt    DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  account  Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([bookedAt])
+}
+
+model SyncJob {
+  id               String        @id @default(cuid())
+  userId           String
+  bankConnectionId String?
+  status           SyncJobStatus @default(PENDING)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  error            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}

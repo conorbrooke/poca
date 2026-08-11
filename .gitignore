@@ -1,0 +1,16 @@
+node_modules
+dist
+.next
+.turbo
+.env
+.env.local
+.env.*.local
+*.log
+coverage
+*.pem
+*tsconfig.tsbuildinfo
+keys/
+
+# Prisma
+packages/db/src/generated
+packages/db/generated
