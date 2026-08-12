@@ -90,3 +90,32 @@ export type SyncResponse = {
   syncJobId: string;
   daysBack: number;
 };
+
+export type {
+  SpendingSummaryResponse,
+  CategoryDetailResponse,
+  SpendingCategorySummary,
+  SpendingPayeeSummary,
+  SpendingRangeId,
+} from "@poca/shared";
+
+export type CategoryOption = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string | null;
+  isSystem: boolean;
+};
+
+export type SpendingTransaction = {
+  id: string;
+  amount: number;
+  currency: string;
+  description: string;
+  merchant: string | null;
+  payeeLabel: string | null;
+  bookedAt: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  institutionName: string;
+};

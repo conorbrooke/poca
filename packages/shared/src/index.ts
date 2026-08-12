@@ -85,3 +85,5 @@ export const IRISH_BANK_NAMES = [
   "Permanent TSB",
   "Ulster Bank",
 ] as const;
+
+export * from "./spending.js";

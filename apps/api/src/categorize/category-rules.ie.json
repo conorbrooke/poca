@@ -1,0 +1,757 @@
+{
+  "generatedAt": "2026-08-12T16:00:57.584Z",
+  "transactionExpenseDescriptions": 897,
+  "matchedDescriptions": 624,
+  "unmatchedDescriptions": 273,
+  "rules": [
+    {
+      "category": "Bank Fees",
+      "payeeLabel": "FX / card fee",
+      "matchText": "neposchg",
+      "priority": 1000,
+      "source": "system"
+    },
+    {
+      "category": "Bank Fees",
+      "payeeLabel": "FX / card fee",
+      "matchText": "neclschg",
+      "priority": 999,
+      "source": "system"
+    },
+    {
+      "category": "Bank Fees",
+      "payeeLabel": "FX / card fee",
+      "matchText": "govt duty",
+      "priority": 998,
+      "source": "system"
+    },
+    {
+      "category": "Transfers",
+      "payeeLabel": "Revolut transfer",
+      "matchText": "revolut**",
+      "priority": 997,
+      "source": "system"
+    },
+    {
+      "category": "Transfers",
+      "payeeLabel": "Bank transfer",
+      "matchText": "to a/c",
+      "priority": 996,
+      "source": "system"
+    },
+    {
+      "category": "Transfers",
+      "payeeLabel": "Bank transfer",
+      "matchText": "tpp conor brooke",
+      "priority": 995,
+      "source": "system"
+    },
+    {
+      "category": "Transfers",
+      "payeeLabel": "Bank transfer",
+      "matchText": "b365 dad new accou",
+      "priority": 994,
+      "source": "system"
+    },
+    {
+      "category": "ATM",
+      "payeeLabel": "Cash withdrawal",
+      "matchText": "atmd ",
+      "priority": 993,
+      "source": "system"
+    },
+    {
+      "category": "ATM",
+      "payeeLabel": "Cash withdrawal",
+      "matchText": "atm15",
+      "priority": 992,
+      "source": "system"
+    },
+    {
+      "category": "ATM",
+      "payeeLabel": "Cash withdrawal",
+      "matchText": "atm23",
+      "priority": 991,
+      "source": "system"
+    },
+    {
+      "category": "ATM",
+      "payeeLabel": "Cash withdrawal",
+      "matchText": "atm25",
+      "priority": 990,
+      "source": "system"
+    },
+    {
+      "category": "ATM",
+      "payeeLabel": "Cash withdrawal",
+      "matchText": "atm28",
+      "priority": 989,
+      "source": "system"
+    },
+    {
+      "category": "Insurance",
+      "payeeLabel": "AXA Insurance",
+      "matchText": "axa insuranc",
+      "priority": 988,
+      "source": "system"
+    },
+    {
+      "category": "Utilities",
+      "payeeLabel": "Electric Ireland",
+      "matchText": "electric pi",
+      "priority": 987,
+      "source": "system"
+    },
+    {
+      "category": "Utilities",
+      "payeeLabel": "Tesco Mobile",
+      "matchText": "tesco mobile",
+      "priority": 986,
+      "source": "system"
+    },
+    {
+      "category": "Subscriptions",
+      "payeeLabel": "Spotify",
+      "matchText": "spotify",
+      "priority": 985,
+      "source": "system"
+    },
+    {
+      "category": "Subscriptions",
+      "payeeLabel": "Cursor",
+      "matchText": "cursor, ai",
+      "priority": 984,
+      "source": "system"
+    },
+    {
+      "category": "Subscriptions",
+      "payeeLabel": "OpenAI",
+      "matchText": "openai *chat",
+      "priority": 983,
+      "source": "system"
+    },
+    {
+      "category": "Subscriptions",
+      "payeeLabel": "Apple",
+      "matchText": "apple.com/bi",
+      "priority": 982,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Just Eat",
+      "matchText": "just eat",
+      "priority": 981,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Rite Bite",
+      "matchText": "rite bite",
+      "priority": 980,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Thuisbezorgd",
+      "matchText": "thuisbezorgd",
+      "priority": 979,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Domino's",
+      "matchText": "domino's piz",
+      "priority": 978,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Supermac's",
+      "matchText": "supermacs",
+      "priority": 977,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "JD Wetherspoon",
+      "matchText": "jd wetherspo",
+      "priority": 976,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "The Railway",
+      "matchText": "the railway",
+      "priority": 975,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "The Anvil",
+      "matchText": "the anvil",
+      "priority": 974,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "The Garavogue",
+      "matchText": "the garavog",
+      "priority": 973,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Madigan's",
+      "matchText": "madigan eve",
+      "priority": 972,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Bad Bobs",
+      "matchText": "bad bobs",
+      "priority": 971,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Vibe Bar",
+      "matchText": "vibe bar",
+      "priority": 970,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Beach Club",
+      "matchText": "beach club",
+      "priority": 969,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Goa",
+      "matchText": "goa bv",
+      "priority": 968,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "The Strand",
+      "matchText": "the strand",
+      "priority": 967,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "TP Smiths",
+      "matchText": "tp smiths",
+      "priority": 966,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Awesome Walls",
+      "matchText": "awesome wal",
+      "priority": 965,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Gaelic Corner",
+      "matchText": "gaelic corn",
+      "priority": 964,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "S&E Food Tavern",
+      "matchText": "s&e f. tave",
+      "priority": 963,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "RTE Youth Bar",
+      "matchText": "rte. y bare",
+      "priority": 962,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Apache Pizza",
+      "matchText": "mol*apache",
+      "priority": 961,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Apache Pizza",
+      "matchText": "apache p",
+      "priority": 960,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Dines",
+      "matchText": "dines* dubx",
+      "priority": 959,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Oriental Kitchen",
+      "matchText": "oriental new",
+      "priority": 958,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Junction 14",
+      "matchText": "junction 14",
+      "priority": 957,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Quinlan's",
+      "matchText": "quinlan",
+      "priority": 956,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Griffins",
+      "matchText": "griffins",
+      "priority": 955,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Zontafs",
+      "matchText": "zontafs",
+      "priority": 954,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Zontafs",
+      "matchText": "sp zontafs",
+      "priority": 953,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Alexandra Deli",
+      "matchText": "alexandra de",
+      "priority": 952,
+      "source": "system"
+    },
+    {
+      "category": "Restaurants",
+      "payeeLabel": "Hotel Apple",
+      "matchText": "hotel apple",
+      "priority": 951,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "Tesco",
+      "matchText": "tesco store",
+      "priority": 950,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "Tesco",
+      "matchText": "tesco parki",
+      "priority": 949,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "Dunnes",
+      "matchText": "dunnes",
+      "priority": 948,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "Lidl",
+      "matchText": "lidl irelan",
+      "priority": 947,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "Lidl",
+      "matchText": "lidl irel",
+      "priority": 946,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "Spar",
+      "matchText": "spar ",
+      "priority": 945,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "SuperValu",
+      "matchText": "supervalu",
+      "priority": 944,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "Gala",
+      "matchText": "gala killen",
+      "priority": 943,
+      "source": "system"
+    },
+    {
+      "category": "Groceries",
+      "payeeLabel": "Gala",
+      "matchText": "gala ",
+      "priority": 942,
+      "source": "system"
+    },
+    {
+      "category": "Fuel",
+      "payeeLabel": "Maxol",
+      "matchText": "maxol",
+      "priority": 941,
+      "source": "system"
+    },
+    {
+      "category": "Fuel",
+      "payeeLabel": "Circle K",
+      "matchText": "circle k",
+      "priority": 940,
+      "source": "system"
+    },
+    {
+      "category": "Fuel",
+      "payeeLabel": "Applegreen",
+      "matchText": "applegreen",
+      "priority": 939,
+      "source": "system"
+    },
+    {
+      "category": "Fuel",
+      "payeeLabel": "Inver Energy",
+      "matchText": "inver energ",
+      "priority": 938,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "Uber",
+      "matchText": "ubr* pending",
+      "priority": 937,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "Uber",
+      "matchText": "ubr*",
+      "priority": 936,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "Irish Rail",
+      "matchText": "irish rail",
+      "priority": 935,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "City Bus",
+      "matchText": "citi bus",
+      "priority": 934,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "eFlow",
+      "matchText": "eflow.ie",
+      "priority": 933,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "DirectRoute",
+      "matchText": "directroute",
+      "priority": 932,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "Parking",
+      "matchText": "www.parking",
+      "priority": 931,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "Parking",
+      "matchText": "midlands pa",
+      "priority": 930,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "NYA Smart Route",
+      "matchText": "nya*smart r",
+      "priority": 929,
+      "source": "system"
+    },
+    {
+      "category": "Transport",
+      "payeeLabel": "NYA Smart Route",
+      "matchText": "nya*airvend",
+      "priority": 928,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "Ryanair",
+      "matchText": "ryanair",
+      "priority": 927,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "Booking.com",
+      "matchText": "bkg*booking",
+      "priority": 926,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "Clayton Hotel",
+      "matchText": "clayton dub",
+      "priority": 925,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "PLL Hotels",
+      "matchText": "pll hotels",
+      "priority": 924,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "Avolta",
+      "matchText": "avolta tene",
+      "priority": 923,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "Sauna Experience",
+      "matchText": "www.saunaex",
+      "priority": 922,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "Sauna Experience",
+      "matchText": "sauna sessio",
+      "priority": 921,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "WillWeGo",
+      "matchText": "www.willwego",
+      "priority": 920,
+      "source": "system"
+    },
+    {
+      "category": "Travel",
+      "payeeLabel": "Costa Adeje ATM",
+      "matchText": "costa adeje",
+      "priority": 919,
+      "source": "system"
+    },
+    {
+      "category": "Entertainment",
+      "payeeLabel": "Steam",
+      "matchText": "steamgames",
+      "priority": 918,
+      "source": "system"
+    },
+    {
+      "category": "Entertainment",
+      "payeeLabel": "PlayStation",
+      "matchText": "playstation",
+      "priority": 917,
+      "source": "system"
+    },
+    {
+      "category": "Entertainment",
+      "payeeLabel": "Odeon",
+      "matchText": "odeon portl",
+      "priority": 916,
+      "source": "system"
+    },
+    {
+      "category": "Entertainment",
+      "payeeLabel": "Ticketmaster",
+      "matchText": "tm *ticketma",
+      "priority": 915,
+      "source": "system"
+    },
+    {
+      "category": "Entertainment",
+      "payeeLabel": "The Nightmare",
+      "matchText": "the nightmar",
+      "priority": 914,
+      "source": "system"
+    },
+    {
+      "category": "Entertainment",
+      "payeeLabel": "G2A",
+      "matchText": "g2a.com",
+      "priority": 913,
+      "source": "system"
+    },
+    {
+      "category": "Entertainment",
+      "payeeLabel": "G2A",
+      "matchText": "g2abvshop",
+      "priority": 912,
+      "source": "system"
+    },
+    {
+      "category": "Shopping",
+      "payeeLabel": "Amazon",
+      "matchText": "amzn mktp",
+      "priority": 911,
+      "source": "system"
+    },
+    {
+      "category": "Shopping",
+      "payeeLabel": "IKEA",
+      "matchText": "ikea irelan",
+      "priority": 910,
+      "source": "system"
+    },
+    {
+      "category": "Shopping",
+      "payeeLabel": "Penneys",
+      "matchText": "penneys",
+      "priority": 909,
+      "source": "system"
+    },
+    {
+      "category": "Shopping",
+      "payeeLabel": "Gymshark",
+      "matchText": "sp gymshark",
+      "priority": 908,
+      "source": "system"
+    },
+    {
+      "category": "Shopping",
+      "payeeLabel": "E-Smoke",
+      "matchText": "e-smoke4u",
+      "priority": 907,
+      "source": "system"
+    },
+    {
+      "category": "Shopping",
+      "payeeLabel": "Coca Cola",
+      "matchText": "coca cola",
+      "priority": 906,
+      "source": "system"
+    },
+    {
+      "category": "Health & Fitness",
+      "payeeLabel": "Burn Gym",
+      "matchText": "burn gym",
+      "priority": 905,
+      "source": "system"
+    },
+    {
+      "category": "Health & Fitness",
+      "payeeLabel": "UL Sport",
+      "matchText": "ul sport cli",
+      "priority": 904,
+      "source": "system"
+    },
+    {
+      "category": "Education",
+      "payeeLabel": "Road Safety",
+      "matchText": "road safety",
+      "priority": 903,
+      "source": "system"
+    },
+    {
+      "category": "Education",
+      "payeeLabel": "Driving Test",
+      "matchText": "www.drivingt",
+      "priority": 902,
+      "source": "system"
+    },
+    {
+      "category": "Education",
+      "payeeLabel": "Driving Test",
+      "matchText": "bogdan drivi",
+      "priority": 901,
+      "source": "system"
+    },
+    {
+      "category": "Education",
+      "payeeLabel": "Central SQ",
+      "matchText": "sq *central",
+      "priority": 900,
+      "source": "system"
+    }
+  ],
+  "unmatchedSample": [
+    "POSC04MAY PYD*MAC FOR",
+    "POSC28AUG VAPEWAYS",
+    "POSC22MAY LM 30 ARONA",
+    "POSC17JAN SPORTS DIRE",
+    "C1502GB  3.40@1.15294",
+    "POSC29NOV CT GRIFFEEN",
+    "POSC10JAN EUROGIANT T",
+    "POSC24MAY LM 245 ARON",
+    "POSC24MAY TAXI ARONA",
+    "POSC25JUN WWW THEGARD",
+    "POSC13MAY COSTA COFFE",
+    "POSC20MAY KEALYS",
+    "P0806HK  3.99@0.86716",
+    "POSC09FEB MCDONALDS 7",
+    "POSC19SEP MAAS 55",
+    "POSC20SEP ESCAPE",
+    "POSC01MAR DOWNEYS CEN",
+    "POSC07JUL TEXACO NEW",
+    "POSC22NOV KEN BLACK",
+    "POSC10SEP KOOLMIX",
+    "POSC18OCT LUAS TRANSD",
+    "POSC01FEB KAYS KITCHE",
+    "POSC25JAN ARTHURS QUA",
+    "POSC31AUG LIFESAVER P",
+    "POSC25OCT L.B CABS",
+    "POSC11JUL PORTLAND BA",
+    "POSC07SEP CENTRA GREE",
+    "POSC13MAR ALDI 83 872",
+    "POSC11OCT NYA*AI VEND",
+    "POSC11JAN FUN MAX ATH",
+    "POSC05NOV TEXACO NEW",
+    "POSC17JAN JOHN DAVID",
+    "POSC20JUN WWW THEGARD",
+    "POSC21SEP BK 15019",
+    "POSC04FEB CARD FACTOR",
+    "POSC10JAN CC ASIAN DE",
+    "POSC20MAY TEXACO NEW",
+    "POSC15JUN TST-BEL CIB",
+    "C1402GB 92.62@1.15169",
+    "POSC25JUL MIDLINK M7/"
+  ]
+}

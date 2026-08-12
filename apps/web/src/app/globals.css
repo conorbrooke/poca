@@ -689,3 +689,246 @@ button {
   width: 100%;
   margin-top: 0.25rem;
 }
+
+.spending-hero {
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+}
+
+.spending-hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.spending-total {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-top: 0.25rem;
+}
+
+.range-tabs,
+.modal-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.range-tab {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.45rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.range-tab:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+
+.range-tab.active {
+  background: var(--accent-glow);
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.spending-other-banner {
+  margin-bottom: 1rem;
+}
+
+.spending-other-banner a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.spending-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.spending-category-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(120px, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.125rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.spending-category-row:hover {
+  border-color: var(--accent-dim);
+  transform: translateY(-1px);
+}
+
+.spending-category-row.other {
+  border-style: dashed;
+}
+
+.spending-category-main {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  min-width: 0;
+}
+
+.spending-category-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.spending-category-icon.large {
+  width: 56px;
+  height: 56px;
+  font-size: 1.5rem;
+}
+
+.spending-category-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.spending-category-bar-wrap {
+  height: 8px;
+  background: var(--bg-elevated);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.spending-category-bar {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 4px;
+}
+
+.spending-category-amount {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.payee-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.payee-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.payee-row.active {
+  border-color: var(--accent-dim);
+  background: var(--accent-glow);
+}
+
+.payee-name {
+  font-weight: 600;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.back-link:hover {
+  color: var(--text);
+}
+
+.transaction-row.clickable {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.transaction-row.clickable:hover {
+  background: var(--surface-hover);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.72);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 100;
+}
+
+.modal-panel {
+  width: min(100%, 520px);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.checkbox-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.alert-warning {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+@media (max-width: 720px) {
+  .spending-category-row {
+    grid-template-columns: 1fr;
+  }
+
+  .spending-category-bar-wrap {
+    order: 3;
+  }
+
+  .spending-category-amount {
+    order: 2;
+    justify-self: start;
+  }
+}

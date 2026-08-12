@@ -16,6 +16,7 @@ import type {
 } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
+import { CategoriesService } from "../spending/categories.service";
 import {
   computeStats,
   connectionStatsFromRow,
@@ -72,6 +73,7 @@ export class BankService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly categoriesService: CategoriesService,
   ) {
     const applicationId = this.config.get<string>(
       "ENABLE_BANKING_APPLICATION_ID",
@@ -395,6 +397,7 @@ export class BankService {
       );
 
       let syncedCount = 0;
+      const syncedTransactionIds: string[] = [];
 
       for (const externalAccountId of requisition.accountIds) {
         const externalAccount =
@@ -436,7 +439,7 @@ export class BankService {
         );
 
         for (const tx of transactions) {
-          await this.prisma.transaction.upsert({
+          const saved = await this.prisma.transaction.upsert({
             where: {
               accountId_externalId: {
                 accountId: account.id,
@@ -459,8 +462,16 @@ export class BankService {
               bookedAt: tx.bookedAt,
             },
           });
+          syncedTransactionIds.push(saved.id);
           syncedCount++;
         }
+      }
+
+      if (syncedTransactionIds.length > 0) {
+        await this.categoriesService.categorizeTransactions(
+          user.id,
+          syncedTransactionIds,
+        );
       }
 
       await this.recomputeConnectionStats(bankConnectionId);
