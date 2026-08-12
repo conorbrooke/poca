@@ -11,6 +11,7 @@ type RecategorizePanelProps = {
     description: string;
     payeeLabel: string | null;
     amount: number;
+    categoryId: string | null;
   };
   categories: CategoryOption[];
   onClose: () => void;
@@ -23,16 +24,22 @@ export function RecategorizePanel({
   onClose,
   onSaved,
 }: RecategorizePanelProps) {
-  const [categoryId, setCategoryId] = useState(
-    categories.find((c) => c.name !== "Other")?.id ?? categories[0]?.id ?? "",
-  );
-  const [payeeLabel, setPayeeLabel] = useState(
+  const [displayName, setDisplayName] = useState(
     transaction.payeeLabel ?? transaction.description.slice(0, 60),
   );
-  const [createRule, setCreateRule] = useState(true);
-  const [applyToSimilar, setApplyToSimilar] = useState(true);
+  const [changeCategory, setChangeCategory] = useState(false);
+  const [categoryId, setCategoryId] = useState(
+    transaction.categoryId ??
+      categories.find((c) => c.name !== "Other")?.id ??
+      categories[0]?.id ??
+      "",
+  );
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [mode, setMode] = useState<"existing" | "new">("existing");
+  const [categoryMode, setCategoryMode] = useState<"existing" | "new">(
+    "existing",
+  );
+  const [rememberFuture, setRememberFuture] = useState(false);
+  const [applyToSimilar, setApplyToSimilar] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,25 +54,29 @@ export function RecategorizePanel({
     setSaving(true);
     setError(null);
     try {
-      let targetCategoryId = categoryId;
+      let targetCategoryId: string | undefined;
 
-      if (mode === "new") {
-        const created = await apiFetch<CategoryOption>("/spending/categories", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newCategoryName.trim() }),
-        });
-        targetCategoryId = created.id;
+      if (changeCategory) {
+        if (categoryMode === "new") {
+          const created = await apiFetch<CategoryOption>("/spending/categories", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: newCategoryName.trim() }),
+          });
+          targetCategoryId = created.id;
+        } else {
+          targetCategoryId = categoryId;
+        }
       }
 
       await apiFetch(`/spending/transactions/${transaction.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          categoryId: targetCategoryId,
-          payeeLabel: payeeLabel.trim(),
-          createRule,
+          payeeLabel: displayName.trim(),
+          createRule: rememberFuture,
           applyToSimilar,
+          ...(targetCategoryId ? { categoryId: targetCategoryId } : {}),
         }),
       });
 
@@ -89,9 +100,9 @@ export function RecategorizePanel({
       >
         <div className="modal-header">
           <div>
-            <p className="page-eyebrow">Categorize transaction</p>
+            <p className="page-eyebrow">Edit transaction</p>
             <h2 id="recategorize-title" className="section-title">
-              {transaction.description}
+              {transaction.payeeLabel ?? transaction.description}
             </h2>
             <p className="bank-meta">
               {formatMoney(transaction.amount, "EUR", { signed: true })}
@@ -102,79 +113,108 @@ export function RecategorizePanel({
           </button>
         </div>
 
-        <div className="modal-tabs">
-          <button
-            type="button"
-            className={`range-tab${mode === "existing" ? " active" : ""}`}
-            onClick={() => setMode("existing")}
-          >
-            Existing category
-          </button>
-          <button
-            type="button"
-            className={`range-tab${mode === "new" ? " active" : ""}`}
-            onClick={() => setMode("new")}
-          >
-            New category
-          </button>
-        </div>
-
-        {mode === "existing" ? (
-          <label className="login-label">
-            Category
-            <select
-              className="login-input"
-              value={categoryId}
-              onChange={(event) => setCategoryId(event.target.value)}
-            >
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.icon ? `${category.icon} ` : ""}
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <label className="login-label">
-            New category name
-            <input
-              className="login-input"
-              value={newCategoryName}
-              onChange={(event) => setNewCategoryName(event.target.value)}
-              placeholder="e.g. Pet care"
-            />
-          </label>
-        )}
-
         <label className="login-label">
-          Payee / merchant label
+          Display name
           <input
             className="login-input"
-            value={payeeLabel}
-            onChange={(event) => setPayeeLabel(event.target.value)}
-            placeholder="How this payee should appear in reports"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            placeholder="How this should appear in your spending"
           />
         </label>
+        <p className="bank-meta" style={{ marginTop: "-0.75rem" }}>
+          Bank description (used for matching, not shown in reports):{" "}
+          <span style={{ opacity: 0.85 }}>{transaction.description}</span>
+        </p>
 
-        <div className="checkbox-row">
-          <label className="checkbox-label">
+        <fieldset className="scope-fieldset">
+          <legend className="login-label">Apply to</legend>
+          <label className="radio-label">
             <input
-              type="checkbox"
-              checked={createRule}
-              onChange={(event) => setCreateRule(event.target.checked)}
+              type="radio"
+              name="scope"
+              checked={!rememberFuture}
+              onChange={() => setRememberFuture(false)}
             />
-            Remember this for future transactions
+            This transaction only
           </label>
-          <label className="checkbox-label">
+          <label className="radio-label">
             <input
-              type="checkbox"
-              checked={applyToSimilar}
-              onChange={(event) => setApplyToSimilar(event.target.checked)}
+              type="radio"
+              name="scope"
+              checked={rememberFuture}
+              onChange={() => setRememberFuture(true)}
             />
-            Apply to similar past transactions
+            Remember for future matching transactions
           </label>
-        </div>
+        </fieldset>
+
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={applyToSimilar}
+            onChange={(event) => setApplyToSimilar(event.target.checked)}
+          />
+          Also update similar past transactions
+        </label>
+
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={changeCategory}
+            onChange={(event) => setChangeCategory(event.target.checked)}
+          />
+          Change category
+        </label>
+
+        {changeCategory ? (
+          <>
+            <div className="modal-tabs">
+              <button
+                type="button"
+                className={`range-tab${categoryMode === "existing" ? " active" : ""}`}
+                onClick={() => setCategoryMode("existing")}
+              >
+                Existing category
+              </button>
+              <button
+                type="button"
+                className={`range-tab${categoryMode === "new" ? " active" : ""}`}
+                onClick={() => setCategoryMode("new")}
+              >
+                New category
+              </button>
+            </div>
+
+            {categoryMode === "existing" ? (
+              <label className="login-label">
+                Category
+                <select
+                  className="login-input"
+                  value={categoryId}
+                  onChange={(event) => setCategoryId(event.target.value)}
+                >
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.icon ? `${category.icon} ` : ""}
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="login-label">
+                New category name
+                <input
+                  className="login-input"
+                  value={newCategoryName}
+                  onChange={(event) => setNewCategoryName(event.target.value)}
+                  placeholder="e.g. Pet care"
+                />
+              </label>
+            )}
+          </>
+        ) : null}
 
         {error ? <p className="alert alert-error">{error}</p> : null}
 
@@ -183,8 +223,10 @@ export function RecategorizePanel({
           className="btn btn-primary login-submit"
           disabled={
             saving ||
-            !payeeLabel.trim() ||
-            (mode === "new" && !newCategoryName.trim())
+            !displayName.trim() ||
+            (changeCategory &&
+              categoryMode === "new" &&
+              !newCategoryName.trim())
           }
           onClick={() => void handleSave()}
         >
@@ -194,7 +236,7 @@ export function RecategorizePanel({
               Saving…
             </>
           ) : (
-            "Save categorization"
+            "Save"
           )}
         </button>
       </div>

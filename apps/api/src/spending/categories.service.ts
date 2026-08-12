@@ -154,7 +154,7 @@ export class CategoriesService {
     userId: string,
     transactionId: string,
     input: {
-      categoryId: string;
+      categoryId?: string;
       payeeLabel: string;
       createRule: boolean;
       applyToSimilar: boolean;
@@ -168,22 +168,42 @@ export class CategoriesService {
       throw new NotFoundException("Transaction not found");
     }
 
+    const categoryId = input.categoryId ?? transaction.categoryId;
+    if (!categoryId) {
+      throw new NotFoundException("Transaction has no category");
+    }
+
     const matchText = extractRuleMatchText(
       transaction.description,
       transaction.merchant,
     );
 
     if (input.createRule) {
-      await this.prisma.categoryRule.create({
-        data: {
-          userId,
-          categoryId: input.categoryId,
-          matchText,
-          payeeLabel: input.payeeLabel,
-          priority: 20_000,
-          source: "user",
-        },
+      const existingRule = await this.prisma.categoryRule.findFirst({
+        where: { userId, matchText, source: "user" },
       });
+
+      if (existingRule) {
+        await this.prisma.categoryRule.update({
+          where: { id: existingRule.id },
+          data: {
+            categoryId,
+            payeeLabel: input.payeeLabel,
+            priority: 20_000,
+          },
+        });
+      } else {
+        await this.prisma.categoryRule.create({
+          data: {
+            userId,
+            categoryId,
+            matchText,
+            payeeLabel: input.payeeLabel,
+            priority: 20_000,
+            source: "user",
+          },
+        });
+      }
     }
 
     const idsToUpdate = [transaction.id];
@@ -218,8 +238,8 @@ export class CategoriesService {
     await this.prisma.transaction.updateMany({
       where: { id: { in: idsToUpdate } },
       data: {
-        categoryId: input.categoryId,
         payeeLabel: input.payeeLabel,
+        ...(input.categoryId ? { categoryId: input.categoryId } : {}),
       },
     });
 

@@ -30,7 +30,7 @@ export const createCategorySchema = z.object({
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 
 export const recategorizeTransactionSchema = z.object({
-  categoryId: z.string().min(1),
+  categoryId: z.string().min(1).optional(),
   payeeLabel: z.string().min(1).max(120),
   createRule: z.boolean().default(false),
   applyToSimilar: z.boolean().default(false),

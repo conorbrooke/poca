@@ -912,6 +912,27 @@ button {
   color: var(--muted);
 }
 
+.scope-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.scope-fieldset .login-label {
+  margin-bottom: 0.25rem;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
 .alert-warning {
   background: rgba(251, 191, 36, 0.12);
   color: var(--warning);
