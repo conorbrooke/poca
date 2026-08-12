@@ -3,15 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { StatsGrid } from "../../components/stats-grid";
-import { TransactionList } from "../../components/transaction-list";
-import { apiFetch } from "../../lib/api";
-import { formatMoney, formatRelativeSync } from "../../lib/format";
+import { StatsGrid } from "../../../components/stats-grid";
+import { TransactionList } from "../../../components/transaction-list";
+import { apiFetch } from "../../../lib/api";
+import { formatMoney, formatRelativeSync } from "../../../lib/format";
 import type {
   DashboardResponse,
   DashboardTransaction,
   TransactionsResponse,
-} from "../../lib/types";
+} from "../../../lib/types";
 import {
   SYNC_DEFAULT_DAYS,
   SYNC_RANGE_OPTIONS,

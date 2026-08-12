@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { apiFetch } from "../../../lib/api";
+import { apiFetch } from "../../../../lib/api";
 
 type CallbackResult = {
   connectionId: string;

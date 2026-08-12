@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { apiFetch } from "../../lib/api";
-import { formatMoney, formatRelativeSync } from "../../lib/format";
+import { apiFetch } from "../../../lib/api";
+import { formatMoney, formatRelativeSync } from "../../../lib/format";
 import type {
   BankConnection,
   Institution,
   LinkResponse,
   SyncResponse,
-} from "../../lib/types";
+} from "../../../lib/types";
 import {
   SYNC_DEFAULT_DAYS,
   SYNC_RANGE_OPTIONS,
