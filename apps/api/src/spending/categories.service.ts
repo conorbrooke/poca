@@ -75,13 +75,22 @@ export class CategoriesService {
     userId: string,
     input: { name: string; color?: string; icon?: string },
   ) {
-    return this.prisma.category.create({
-      data: {
+    const name = input.name.trim();
+
+    return this.prisma.category.upsert({
+      where: {
+        userId_name: {
+          userId,
+          name,
+        },
+      },
+      create: {
         userId,
-        name: input.name,
+        name,
         color: input.color ?? "#6366f1",
         icon: input.icon,
       },
+      update: {},
     });
   }
 
