@@ -7,17 +7,54 @@ import { StatsGrid } from "../../components/stats-grid";
 import { TransactionList } from "../../components/transaction-list";
 import { apiFetch } from "../../lib/api";
 import { formatMoney, formatRelativeSync } from "../../lib/format";
-import type { DashboardResponse } from "../../lib/types";
+import type {
+  DashboardResponse,
+  DashboardTransaction,
+  TransactionsResponse,
+} from "../../lib/types";
+import {
+  SYNC_DEFAULT_DAYS,
+  SYNC_RANGE_OPTIONS,
+} from "@poca/shared";
 
 export function DashboardClient() {
   const searchParams = useSearchParams();
   const selectedBankId = searchParams.get("bank");
 
   const [data, setData] = useState<DashboardResponse | null>(null);
+  const [transactions, setTransactions] = useState<DashboardTransaction[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingTransactions, setLoadingTransactions] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncDays, setSyncDays] = useState<number>(SYNC_DEFAULT_DAYS);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const loadTransactions = useCallback(
+    async (cursor?: string) => {
+      const params = new URLSearchParams({ limit: "50" });
+      if (selectedBankId) {
+        params.set("bankConnectionId", selectedBankId);
+      }
+      if (cursor) {
+        params.set("cursor", cursor);
+      }
+
+      const result = await apiFetch<TransactionsResponse>(
+        `/bank/transactions?${params.toString()}`,
+      );
+
+      if (cursor) {
+        setTransactions((current) => [...current, ...result.transactions]);
+      } else {
+        setTransactions(result.transactions);
+      }
+      setNextCursor(result.nextCursor);
+    },
+    [selectedBankId],
+  );
 
   const loadDashboard = useCallback(async () => {
     setError(null);
@@ -38,8 +75,10 @@ export function DashboardClient() {
 
   useEffect(() => {
     setLoading(true);
+    setLoadingTransactions(true);
     void loadDashboard();
-  }, [loadDashboard]);
+    void loadTransactions().finally(() => setLoadingTransactions(false));
+  }, [loadDashboard, loadTransactions]);
 
   const activeBank = useMemo(() => {
     if (!data || !selectedBankId) return null;
@@ -59,19 +98,46 @@ export function DashboardClient() {
     setMessage(null);
 
     try {
-      const result = await apiFetch<{ syncedCount: number }>("/bank/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bankConnectionId: selectedBankId }),
-      });
-      setMessage(
-        `Added or updated ${result.syncedCount} transaction${result.syncedCount === 1 ? "" : "s"}.`,
+      const result = await apiFetch<{ syncedCount: number; daysBack: number }>(
+        "/bank/sync",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bankConnectionId: selectedBankId,
+            daysBack: syncDays,
+          }),
+        },
       );
-      await loadDashboard();
+      const rangeLabel =
+        SYNC_RANGE_OPTIONS.find((option) => option.days === result.daysBack)
+          ?.label.toLowerCase() ?? `last ${result.daysBack} days`;
+      setMessage(
+        `Added or updated ${result.syncedCount} transaction${result.syncedCount === 1 ? "" : "s"} from the ${rangeLabel}.`,
+      );
+      setLoadingTransactions(true);
+      await Promise.all([loadDashboard(), loadTransactions()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");
     } finally {
       setSyncing(false);
+      setLoadingTransactions(false);
+    }
+  }
+
+  async function loadMoreTransactions() {
+    if (!nextCursor || loadingMore) return;
+
+    setLoadingMore(true);
+    setError(null);
+    try {
+      await loadTransactions(nextCursor);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load more transactions",
+      );
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -97,6 +163,7 @@ export function DashboardClient() {
     ? { ...activeBank.stats, totalBalance: activeBank.totalBalance }
     : data.stats;
   const showBalance = true;
+  const totalTransactionCount = stats.transactionCount;
 
   return (
     <div>
@@ -146,21 +213,39 @@ export function DashboardClient() {
             </div>
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               {selectedBankId ? (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={syncing}
-                  onClick={() => void syncSelectedBank()}
-                >
-                  {syncing ? (
-                    <>
-                      <span className="loading-spinner" />
-                      Syncing…
-                    </>
-                  ) : (
-                    "Sync latest"
-                  )}
-                </button>
+                <>
+                  <label className="sync-range-select">
+                    <span className="sr-only">Sync date range</span>
+                    <select
+                      value={syncDays}
+                      disabled={syncing}
+                      onChange={(event) =>
+                        setSyncDays(Number(event.target.value))
+                      }
+                    >
+                      {SYNC_RANGE_OPTIONS.map((option) => (
+                        <option key={option.days} value={option.days}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={syncing}
+                    onClick={() => void syncSelectedBank()}
+                  >
+                    {syncing ? (
+                      <>
+                        <span className="loading-spinner" />
+                        Syncing…
+                      </>
+                    ) : (
+                      "Sync latest"
+                    )}
+                  </button>
+                </>
               ) : null}
               <Link href="/sync" className="btn btn-secondary">
                 Manage banks
@@ -190,8 +275,21 @@ export function DashboardClient() {
             </div>
           ) : null}
 
-          <h2 className="section-title">Transactions</h2>
-          <TransactionList transactions={data.transactions} />
+          <div className="section-title-row">
+            <h2 className="section-title">Transactions</h2>
+            {totalTransactionCount > 0 ? (
+              <p className="bank-meta">
+                Showing {transactions.length} of {totalTransactionCount}
+              </p>
+            ) : null}
+          </div>
+          <TransactionList
+            transactions={transactions}
+            loading={loadingTransactions}
+            hasMore={Boolean(nextCursor)}
+            loadingMore={loadingMore}
+            onLoadMore={() => void loadMoreTransactions()}
+          />
         </>
       )}
     </div>

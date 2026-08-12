@@ -15,13 +15,46 @@ export const completeBankLinkSchema = z.object({
 
 export type CompleteBankLinkInput = z.infer<typeof completeBankLinkSchema>;
 
+export const SYNC_DEFAULT_DAYS = 14;
+export const SYNC_MAX_DAYS = 365;
+
+export const SYNC_RANGE_OPTIONS = [
+  { label: "Last 2 weeks", days: 14 },
+  { label: "Last month", days: 30 },
+  { label: "Last 3 months", days: 90 },
+  { label: "Last 6 months", days: 180 },
+  { label: "Last year", days: 365 },
+] as const;
+
 export const syncTransactionsSchema = z.object({
   bankConnectionId: z.string().min(1),
-  dateFrom: z.string().datetime().optional(),
-  dateTo: z.string().datetime().optional(),
+  daysBack: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(SYNC_MAX_DAYS)
+    .default(SYNC_DEFAULT_DAYS),
 });
 
 export type SyncTransactionsInput = z.infer<typeof syncTransactionsSchema>;
+
+export type ConnectionStats = {
+  totalIncome: number;
+  totalSpent: number;
+  netFlow: number;
+  transactionCount: number;
+  avgTransactionSize: number;
+  thisMonthIncome: number;
+  thisMonthSpent: number;
+};
+
+export const transactionsQuerySchema = z.object({
+  bankConnectionId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().min(1).optional(),
+});
+
+export type TransactionsQuery = z.infer<typeof transactionsQuerySchema>;
 
 export const listInstitutionsQuerySchema = z.object({
   country: z

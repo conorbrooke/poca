@@ -10,6 +10,10 @@ import type {
   LinkResponse,
   SyncResponse,
 } from "../../lib/types";
+import {
+  SYNC_DEFAULT_DAYS,
+  SYNC_RANGE_OPTIONS,
+} from "@poca/shared";
 
 function statusClass(status: string): string {
   if (status === "LINKED") return "linked";
@@ -20,14 +24,14 @@ function statusClass(status: string): string {
 function BankLogo({ institution }: { institution: Institution }) {
   if (institution.logo) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={institution.logo}
-        alt=""
-        className="bank-logo"
-        width={44}
-        height={44}
-      />
+      <div className="bank-logo-wrap">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={institution.logo}
+          alt=""
+          className="bank-logo"
+        />
+      </div>
     );
   }
 
@@ -42,6 +46,9 @@ export function SyncClient() {
   const [loading, setLoading] = useState(true);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncDaysByConnection, setSyncDaysByConnection] = useState<
+    Record<string, number>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -113,15 +120,22 @@ export function SyncClient() {
     setError(null);
     setMessage(null);
 
+    const daysBack =
+      syncDaysByConnection[connection.id] ?? SYNC_DEFAULT_DAYS;
+
     try {
       const result = await apiFetch<SyncResponse>("/bank/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bankConnectionId: connection.id }),
+        body: JSON.stringify({ bankConnectionId: connection.id, daysBack }),
       });
 
+      const rangeLabel =
+        SYNC_RANGE_OPTIONS.find((option) => option.days === result.daysBack)
+          ?.label.toLowerCase() ?? `last ${result.daysBack} days`;
+
       setMessage(
-        `Synced ${result.syncedCount} transaction${result.syncedCount === 1 ? "" : "s"} from ${connection.institutionName}.`,
+        `Synced ${result.syncedCount} transaction${result.syncedCount === 1 ? "" : "s"} from ${connection.institutionName} (${rangeLabel}).`,
       );
       await loadData();
     } catch (err) {
@@ -167,18 +181,20 @@ export function SyncClient() {
                 >
                   <div className="bank-card-header">
                     <BankLogo institution={institution} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p className="bank-name">{institution.name}</p>
+                    <div className="bank-card-info">
+                      <div className="bank-card-title-row">
+                        <p className="bank-name">{institution.name}</p>
+                        <span
+                          className={`status-badge ${statusClass(connection.status)}`}
+                        >
+                          {connection.status.toLowerCase()}
+                        </span>
+                      </div>
                       <p className="bank-meta">
                         {formatMoney(balance)} · {txCount} transactions ·{" "}
                         {formatRelativeSync(connection.lastSyncedAt)}
                       </p>
                     </div>
-                    <span
-                      className={`status-badge ${statusClass(connection.status)}`}
-                    >
-                      {connection.status.toLowerCase()}
-                    </span>
                   </div>
 
                   {connection.lastError ? (
@@ -188,6 +204,28 @@ export function SyncClient() {
                   ) : null}
 
                   <div className="bank-card-actions">
+                    <label className="sync-range-select">
+                      <span className="sr-only">Sync date range</span>
+                      <select
+                        value={
+                          syncDaysByConnection[connection.id] ??
+                          SYNC_DEFAULT_DAYS
+                        }
+                        disabled={syncingId === connection.id}
+                        onChange={(event) =>
+                          setSyncDaysByConnection((current) => ({
+                            ...current,
+                            [connection.id]: Number(event.target.value),
+                          }))
+                        }
+                      >
+                        {SYNC_RANGE_OPTIONS.map((option) => (
+                          <option key={option.days} value={option.days}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <button
                       type="button"
                       className="btn btn-primary"
@@ -246,7 +284,7 @@ export function SyncClient() {
               >
                 <div className="bank-card-header">
                   <BankLogo institution={institution} />
-                  <div>
+                  <div className="bank-card-info">
                     <p className="bank-name">{institution.name}</p>
                     <p className="bank-meta">
                       {connectingId === institution.id

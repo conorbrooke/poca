@@ -214,24 +214,35 @@ export class EnableBankingProvider implements BankConnectProvider {
     dateFrom?: string,
     dateTo?: string,
   ): Promise<ExternalTransaction[]> {
-    const params = new URLSearchParams();
+    const baseParams = new URLSearchParams();
     if (dateFrom) {
-      params.set("date_from", dateFrom.slice(0, 10));
+      baseParams.set("date_from", dateFrom.slice(0, 10));
     }
     if (dateTo) {
-      params.set("date_to", dateTo.slice(0, 10));
+      baseParams.set("date_to", dateTo.slice(0, 10));
     }
 
-    const query = params.toString();
-    const path = query
-      ? `/accounts/${accountId}/transactions?${query}`
-      : `/accounts/${accountId}/transactions`;
+    const allTransactions: ExternalTransaction[] = [];
+    let continuationKey: string | undefined;
 
-    const data = await this.request<{
-      transactions?: EnableBankingTransaction[];
-    }>(path);
+    do {
+      const params = new URLSearchParams(baseParams);
+      if (continuationKey) {
+        params.set("continuation_key", continuationKey);
+      }
 
-    return (data.transactions ?? []).map((tx) => this.mapTransaction(tx));
+      const data = await this.request<{
+        transactions?: EnableBankingTransaction[];
+        continuation_key?: string | null;
+      }>(`/accounts/${accountId}/transactions?${params.toString()}`);
+
+      allTransactions.push(
+        ...(data.transactions ?? []).map((tx) => this.mapTransaction(tx)),
+      );
+      continuationKey = data.continuation_key ?? undefined;
+    } while (continuationKey);
+
+    return allTransactions;
   }
 
   private mapTransaction(tx: EnableBankingTransaction): ExternalTransaction {

@@ -6,6 +6,7 @@ import {
   dashboardQuerySchema,
   listInstitutionsQuerySchema,
   syncTransactionsSchema,
+  transactionsQuerySchema,
 } from "@poca/shared";
 import { parseOrThrow } from "../common/parse-or-throw";
 import { BankService } from "./bank.service";
@@ -77,5 +78,15 @@ export class BankController {
       "Dashboard query",
     );
     return this.bankService.getDashboard(bankConnectionId);
+  }
+
+  @Get("transactions")
+  listTransactions(@Query() query: unknown) {
+    const input = parseOrThrow(
+      transactionsQuerySchema,
+      query,
+      "Transactions query",
+    );
+    return this.bankService.listTransactions(input);
   }
 }

@@ -9,72 +9,61 @@ import type { BankConnectProvider } from "@poca/bank-connect";
 import { BankConnectionStatus, BankProvider, SyncJobStatus } from "@poca/db";
 import type {
   CompleteBankLinkInput,
+  ConnectionStats,
   CreateBankLinkInput,
   SyncTransactionsInput,
+  TransactionsQuery,
 } from "@poca/shared";
+import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
+import {
+  computeStats,
+  connectionStatsFromRow,
+  connectionStatsToDb,
+  isStatsMonthStale,
+  mergeStats,
+  roundMoney,
+  syncDateFrom,
+} from "./stats";
 
-type TransactionRecord = {
+type TransactionCursor = {
+  bookedAt: string;
   id: string;
-  amount: { toString(): string };
-  currency: string;
-  description: string;
-  merchant: string | null;
-  bookedAt: Date;
 };
 
 function toNumber(value: { toString(): string }): number {
   return parseFloat(value.toString());
 }
 
-function computeStats(transactions: TransactionRecord[]) {
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+function encodeCursor(bookedAt: Date, id: string): string {
+  return Buffer.from(
+    JSON.stringify({ bookedAt: bookedAt.toISOString(), id }),
+  ).toString("base64url");
+}
 
-  let totalIncome = 0;
-  let totalSpent = 0;
-  let thisMonthIncome = 0;
-  let thisMonthSpent = 0;
-
-  for (const tx of transactions) {
-    const amount = toNumber(tx.amount);
-    const bookedAt = tx.bookedAt;
-
-    if (amount >= 0) {
-      totalIncome += amount;
-      if (bookedAt >= monthStart) {
-        thisMonthIncome += amount;
-      }
-    } else {
-      totalSpent += Math.abs(amount);
-      if (bookedAt >= monthStart) {
-        thisMonthSpent += Math.abs(amount);
-      }
+function decodeCursor(cursor: string): TransactionCursor {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    ) as TransactionCursor;
+    if (!parsed.bookedAt || !parsed.id) {
+      throw new Error("Invalid cursor");
     }
+    return parsed;
+  } catch {
+    throw new BadRequestException("Invalid transaction cursor");
   }
-
-  const transactionCount = transactions.length;
-  const totalVolume = transactions.reduce(
-    (sum, tx) => sum + Math.abs(toNumber(tx.amount)),
-    0,
-  );
-
-  return {
-    totalIncome: roundMoney(totalIncome),
-    totalSpent: roundMoney(totalSpent),
-    netFlow: roundMoney(totalIncome - totalSpent),
-    transactionCount,
-    avgTransactionSize: roundMoney(
-      transactionCount > 0 ? totalVolume / transactionCount : 0,
-    ),
-    thisMonthIncome: roundMoney(thisMonthIncome),
-    thisMonthSpent: roundMoney(thisMonthSpent),
-  };
 }
 
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
+const EMPTY_STATS: ConnectionStats = {
+  totalIncome: 0,
+  totalSpent: 0,
+  netFlow: 0,
+  transactionCount: 0,
+  avgTransactionSize: 0,
+  thisMonthIncome: 0,
+  thisMonthSpent: 0,
+};
 
 @Injectable()
 export class BankService {
@@ -224,12 +213,10 @@ export class BankService {
       include: {
         accounts: {
           include: {
-            transactions: {
-              orderBy: { bookedAt: "desc" },
-            },
             _count: { select: { transactions: true } },
           },
         },
+        stats: true,
       },
       orderBy: { institutionName: "asc" },
     });
@@ -240,17 +227,20 @@ export class BankService {
       orderBy: { institutionName: "asc" },
     });
 
-    const dashboardConnections = connections.map((connection) => {
-      const connectionTransactions = connection.accounts.flatMap(
-        (account) => account.transactions,
-      );
+    const dashboardBanks = [];
+    const statsList: ConnectionStats[] = [];
+    let overallBalance = 0;
+
+    for (const connection of connections) {
+      const stats = await this.ensureConnectionStats(connection);
       const totalBalance = connection.accounts.reduce(
         (sum, account) => sum + toNumber(account.currentBalance),
         0,
       );
-      const stats = computeStats(connectionTransactions);
+      overallBalance += totalBalance;
+      statsList.push(stats);
 
-      return {
+      dashboardBanks.push({
         id: connection.id,
         institutionId: connection.institutionId,
         institutionName: connection.institutionName,
@@ -267,55 +257,67 @@ export class BankService {
           transactionCount: account._count.transactions,
         })),
         stats,
-      };
-    });
-
-    const transactions = connections
-      .flatMap((connection) =>
-        connection.accounts.flatMap((account) =>
-          account.transactions.map((tx) => ({
-            id: tx.id,
-            amount: toNumber(tx.amount),
-            currency: tx.currency,
-            description: tx.description,
-            merchant: tx.merchant,
-            bookedAt: tx.bookedAt.toISOString(),
-            accountId: account.id,
-            accountName: account.name,
-            accountIban: account.iban,
-            bankConnectionId: connection.id,
-            institutionName: connection.institutionName,
-          })),
-        ),
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime(),
-      );
-
-    const allTransactions = connections.flatMap((connection) =>
-      connection.accounts.flatMap((account) => account.transactions),
-    );
-    const overallBalance = connections.reduce(
-      (sum, connection) =>
-        sum +
-        connection.accounts.reduce(
-          (accountSum, account) =>
-            accountSum + toNumber(account.currentBalance),
-          0,
-        ),
-      0,
-    );
-    const overallStats = {
-      ...computeStats(allTransactions),
-      totalBalance: roundMoney(overallBalance),
-    };
+      });
+    }
 
     return {
       connections: allConnections,
-      banks: dashboardConnections,
-      transactions,
-      stats: overallStats,
+      banks: dashboardBanks,
+      stats: mergeStats(statsList, overallBalance),
+    };
+  }
+
+  async listTransactions(query: TransactionsQuery) {
+    const user = await this.ensureDemoUser();
+    const { bankConnectionId, limit, cursor } = query;
+
+    const accountWhere: Prisma.AccountWhereInput = {
+      userId: user.id,
+      ...(bankConnectionId ? { bankConnectionId } : {}),
+    };
+
+    const cursorFilter = cursor
+      ? this.buildCursorFilter(decodeCursor(cursor))
+      : undefined;
+
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        account: accountWhere,
+        ...cursorFilter,
+      },
+      take: limit + 1,
+      orderBy: [{ bookedAt: "desc" }, { id: "desc" }],
+      include: {
+        account: {
+          include: {
+            bankConnection: {
+              select: { id: true, institutionName: true },
+            },
+          },
+        },
+      },
+    });
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page.at(-1);
+
+    return {
+      transactions: page.map((tx) => ({
+        id: tx.id,
+        amount: toNumber(tx.amount),
+        currency: tx.currency,
+        description: tx.description,
+        merchant: tx.merchant,
+        bookedAt: tx.bookedAt.toISOString(),
+        accountId: tx.accountId,
+        accountName: tx.account.name,
+        accountIban: tx.account.iban,
+        bankConnectionId: tx.account.bankConnection?.id ?? "",
+        institutionName: tx.account.bankConnection?.institutionName ?? "",
+      })),
+      nextCursor:
+        hasMore && last ? encodeCursor(last.bookedAt, last.id) : null,
     };
   }
 
@@ -358,7 +360,9 @@ export class BankService {
   }
 
   async syncTransactions(input: SyncTransactionsInput) {
-    const { bankConnectionId, dateFrom, dateTo } = input;
+    const { bankConnectionId, daysBack } = input;
+    const dateFrom = syncDateFrom(daysBack);
+    const dateTo = new Date().toISOString();
 
     const connection = await this.prisma.bankConnection.findUnique({
       where: { id: bankConnectionId },
@@ -459,6 +463,8 @@ export class BankService {
         }
       }
 
+      await this.recomputeConnectionStats(bankConnectionId);
+
       await this.prisma.bankConnection.update({
         where: { id: bankConnectionId },
         data: {
@@ -476,7 +482,7 @@ export class BankService {
         },
       });
 
-      return { syncedCount, syncJobId: syncJob.id };
+      return { syncedCount, syncJobId: syncJob.id, daysBack };
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown sync error";
@@ -500,6 +506,69 @@ export class BankService {
 
       throw error;
     }
+  }
+
+  private buildCursorFilter(
+    cursor: TransactionCursor,
+  ): Prisma.TransactionWhereInput {
+    const bookedAt = new Date(cursor.bookedAt);
+    return {
+      OR: [
+        { bookedAt: { lt: bookedAt } },
+        {
+          bookedAt,
+          id: { lt: cursor.id },
+        },
+      ],
+    };
+  }
+
+  private async ensureConnectionStats(connection: {
+    id: string;
+    stats: {
+      totalIncome: { toString(): string };
+      totalSpent: { toString(): string };
+      netFlow: { toString(): string };
+      transactionCount: number;
+      avgTransactionSize: { toString(): string };
+      thisMonthIncome: { toString(): string };
+      thisMonthSpent: { toString(): string };
+      computedAt: Date;
+    } | null;
+  }): Promise<ConnectionStats> {
+    if (
+      connection.stats &&
+      !isStatsMonthStale(connection.stats.computedAt)
+    ) {
+      return connectionStatsFromRow(connection.stats);
+    }
+
+    return this.recomputeConnectionStats(connection.id);
+  }
+
+  private async recomputeConnectionStats(
+    bankConnectionId: string,
+  ): Promise<ConnectionStats> {
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        account: { bankConnectionId },
+      },
+      select: { amount: true, bookedAt: true },
+    });
+
+    const stats =
+      transactions.length > 0 ? computeStats(transactions) : EMPTY_STATS;
+
+    await this.prisma.connectionStats.upsert({
+      where: { bankConnectionId },
+      create: {
+        bankConnectionId,
+        ...connectionStatsToDb(stats),
+      },
+      update: connectionStatsToDb(stats),
+    });
+
+    return stats;
   }
 
   private mapRequisitionStatus(status: string): BankConnectionStatus {

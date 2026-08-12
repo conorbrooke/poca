@@ -53,8 +53,12 @@ export type DashboardConnectionSummary = {
 export type DashboardResponse = {
   connections: DashboardConnectionSummary[];
   banks: DashboardBank[];
-  transactions: DashboardTransaction[];
   stats: DashboardStats;
+};
+
+export type TransactionsResponse = {
+  transactions: DashboardTransaction[];
+  nextCursor: string | null;
 };
 
 export type Institution = {
@@ -84,4 +88,5 @@ export type LinkResponse = {
 export type SyncResponse = {
   syncedCount: number;
   syncJobId: string;
+  daysBack: number;
 };

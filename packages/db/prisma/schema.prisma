@@ -58,12 +58,32 @@ model BankConnection {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   accounts Account[]
+  stats    ConnectionStats?
 
   @@index([userId])
   @@index([requisitionId])
   @@index([status])
+}
+
+model ConnectionStats {
+  id                 String   @id @default(cuid())
+  bankConnectionId   String   @unique
+  totalIncome        Decimal  @default(0) @db.Decimal(14, 2)
+  totalSpent         Decimal  @default(0) @db.Decimal(14, 2)
+  netFlow            Decimal  @default(0) @db.Decimal(14, 2)
+  transactionCount   Int      @default(0)
+  avgTransactionSize Decimal  @default(0) @db.Decimal(14, 2)
+  thisMonthIncome    Decimal  @default(0) @db.Decimal(14, 2)
+  thisMonthSpent     Decimal  @default(0) @db.Decimal(14, 2)
+  computedAt         DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  bankConnection BankConnection @relation(fields: [bankConnectionId], references: [id], onDelete: Cascade)
+
+  @@index([bankConnectionId])
 }
 
 model Account {
