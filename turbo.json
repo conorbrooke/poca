@@ -1,9 +1,24 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "ACCESS_CODE",
+    "API_URL",
+    "NEXT_PUBLIC_API_URL",
+    "DATABASE_URL",
+    "CORS_ORIGINS",
+    "WEB_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": [
+        "ACCESS_CODE",
+        "API_URL",
+        "NEXT_PUBLIC_API_URL",
+        "DATABASE_URL",
+        "NODE_ENV"
+      ]
     },
     "dev": {
       "dependsOn": ["^build"],
