@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { SPENDING_RANGES } from "@poca/shared";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
+import { useSpendingRange } from "../../../lib/spending-range";
 import type {
   SpendingCategorySummary,
   SpendingSummaryResponse,
@@ -16,9 +17,10 @@ type SpendingClientProps = {
   initialRange?: string;
 };
 
-export function SpendingClient({ initialRange = "month" }: SpendingClientProps) {
+export function SpendingClient({ initialRange }: SpendingClientProps) {
   const searchParams = useSearchParams();
-  const [range, setRange] = useState(initialRange);
+  const urlRange = searchParams.get("range") ?? initialRange ?? null;
+  const [range, setRange] = useSpendingRange(urlRange);
   const [data, setData] = useState<SpendingSummaryResponse | null>(null);
   const [tags, setTags] = useState<TagOption[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);

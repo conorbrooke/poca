@@ -6,11 +6,12 @@ import { useSearchParams } from "next/navigation";
 import { SPENDING_RANGES } from "@poca/shared";
 import { apiFetch } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
+import { useSpendingRange } from "../../../../lib/spending-range";
 import type { TagOption, TagSummaryResponse } from "../../../../lib/types";
 
 export function TagsClient() {
   const searchParams = useSearchParams();
-  const [range, setRange] = useState("month");
+  const [range, setRange] = useSpendingRange(searchParams.get("range"));
   const [tags, setTags] = useState<TagOption[]>([]);
   const [summaries, setSummaries] = useState<TagSummaryResponse[]>([]);
   const [newName, setNewName] = useState("");

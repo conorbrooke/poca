@@ -7,6 +7,7 @@ import { SPENDING_RANGES } from "@poca/shared";
 import { RecategorizePanel } from "../../../../components/recategorize-panel";
 import { apiFetch } from "../../../../lib/api";
 import { formatDate, formatMoney } from "../../../../lib/format";
+import { useSpendingRange } from "../../../../lib/spending-range";
 import type {
   CategoryDetailResponse,
   CategoryOption,
@@ -20,7 +21,7 @@ type CategoryClientProps = {
 export function CategoryClient({ categoryId }: CategoryClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const range = searchParams.get("range") ?? "month";
+  const [range] = useSpendingRange(searchParams.get("range"));
   const bankConnectionId = searchParams.get("bank") ?? undefined;
   const payeeFilter = searchParams.get("payee") ?? undefined;
   const tagIds = searchParams.get("tagIds") ?? undefined;
