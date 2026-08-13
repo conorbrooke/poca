@@ -1,5 +1,6 @@
 import { createReadStream } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
   BadRequestException,
@@ -16,15 +17,26 @@ const ALLOWED_MIME: Record<string, string> = {
   "application/pdf": ".pdf",
 };
 
+const EXTENSION_BY_NAME: Record<string, string> = {
+  ".jpg": ".jpg",
+  ".jpeg": ".jpg",
+  ".png": ".png",
+  ".webp": ".webp",
+  ".pdf": ".pdf",
+};
+
 @Injectable()
 export class ReceiptsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private receiptsDir() {
-    return (
-      process.env.RECEIPTS_DIR?.trim() ||
-      path.resolve(process.cwd(), "data/receipts")
-    );
+    const configured = process.env.RECEIPTS_DIR?.trim();
+    if (configured) {
+      return configured.startsWith("~/")
+        ? path.join(os.homedir(), configured.slice(2))
+        : configured;
+    }
+    return path.join(os.homedir(), "Desktop", "Póca Receipts");
   }
 
   async listReceipts(userId: string, transactionId: string) {
@@ -41,7 +53,9 @@ export class ReceiptsService {
     file: { originalname: string; mimetype: string; size: number; buffer: Buffer },
   ) {
     const transaction = await this.requireParent(userId, transactionId);
-    const extension = ALLOWED_MIME[file.mimetype];
+    const extension =
+      ALLOWED_MIME[file.mimetype] ??
+      EXTENSION_BY_NAME[path.extname(file.originalname).toLowerCase()];
     if (!extension) {
       throw new BadRequestException(
         "Receipts must be JPEG, PNG, WebP, or PDF",
@@ -51,10 +65,12 @@ export class ReceiptsService {
     const dir = this.receiptsDir();
     await mkdir(dir, { recursive: true });
 
-    const label = this.sanitizeLabel(
+    const label = this.sanitizeFileToken(
       transaction.payeeLabel ?? transaction.description,
     );
-    const bankId = transaction.externalId ?? transaction.id;
+    const bankId = this.sanitizeFileToken(
+      transaction.externalId ?? transaction.id,
+    );
     const existingCount = await this.prisma.transactionReceipt.count({
       where: { transactionId },
     });
@@ -119,11 +135,11 @@ export class ReceiptsService {
     return transaction;
   }
 
-  private sanitizeLabel(label: string) {
-    const cleaned = label
-      .replace(/[^a-zA-Z0-9]+/g, "-")
+  private sanitizeFileToken(value: string) {
+    const cleaned = value
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 80);
+      .slice(0, 120);
     return cleaned || "receipt";
   }
 }

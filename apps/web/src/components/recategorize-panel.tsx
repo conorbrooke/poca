@@ -59,6 +59,7 @@ export function RecategorizePanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   const isSplitChild = transaction.kind === "split";
   const parentIsSplit = detail?.isSplit ?? transaction.isSplit;
@@ -159,9 +160,40 @@ export function RecategorizePanel({
     return categoryId;
   }
 
+  async function reloadDetail() {
+    const tx = await apiFetch<TransactionDetail>(
+      `/spending/transactions/${transaction.transactionId}`,
+    );
+    setDetail(tx);
+    if (transaction.kind === "split" && transaction.splitId) {
+      const line = tx.splits.find((split) => split.id === transaction.splitId);
+      if (line) {
+        setDisplayName(line.payeeLabel);
+        setCategoryId(line.categoryId);
+        setSelectedTagIds(line.tags.map((tag) => tag.id));
+      }
+    } else if (!tx.isSplit) {
+      setDisplayName(tx.payeeLabel ?? tx.description.slice(0, 60));
+      setSelectedTagIds(tx.tags.map((tag) => tag.id));
+    }
+    setSplitDrafts(
+      tx.splits.length >= 2
+        ? tx.splits.map((split) => ({
+            key: split.id,
+            amount: Math.abs(split.amount).toFixed(2),
+            categoryId: split.categoryId,
+            payeeLabel: split.payeeLabel,
+            tagIds: split.tags.map((tag) => tag.id),
+          }))
+        : splitDrafts,
+    );
+    return tx;
+  }
+
   async function handleSaveDetails() {
     setSaving(true);
     setError(null);
+    setSavedMessage(null);
     try {
       const targetCategoryId = await resolveCategoryId();
 
@@ -191,8 +223,9 @@ export function RecategorizePanel({
         });
       }
 
+      await reloadDetail();
       onSaved();
-      onClose();
+      setSavedMessage("Saved — you can upload a receipt below.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save");
     } finally {
@@ -203,6 +236,7 @@ export function RecategorizePanel({
   async function handleSaveSplits() {
     setSaving(true);
     setError(null);
+    setSavedMessage(null);
     try {
       await apiFetch(`/spending/transactions/${transaction.transactionId}/splits`, {
         method: "PUT",
@@ -216,8 +250,9 @@ export function RecategorizePanel({
           })),
         }),
       });
+      await reloadDetail();
       onSaved();
-      onClose();
+      setSavedMessage("Splits saved — you can upload a receipt below.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save splits");
     } finally {
@@ -723,6 +758,9 @@ export function RecategorizePanel({
           />
         </label>
 
+        {savedMessage ? (
+          <p className="alert alert-warning">{savedMessage}</p>
+        ) : null}
         {error ? <p className="alert alert-error">{error}</p> : null}
       </div>
     </div>
