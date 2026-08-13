@@ -348,6 +348,73 @@ export class CategoriesService {
     return { updatedCount: idsToUpdate.length, matchText };
   }
 
+  async bulkEditTransactions(
+    userId: string,
+    input: {
+      items: Array<{ kind: "transaction" | "split"; id: string }>;
+      categoryId?: string;
+      tagIds?: string[];
+      tagMode: "set" | "add";
+    },
+  ) {
+    let updatedCount = 0;
+
+    for (const item of input.items) {
+      if (item.kind === "split") {
+        const split = await this.prisma.transactionSplit.findFirst({
+          where: {
+            id: item.id,
+            transaction: { account: { userId } },
+          },
+        });
+        if (!split) continue;
+
+        if (input.categoryId) {
+          await this.prisma.transactionSplit.update({
+            where: { id: split.id },
+            data: { categoryId: input.categoryId },
+          });
+        }
+
+        if (input.tagIds !== undefined) {
+          if (input.tagMode === "add") {
+            await this.addSplitTags(split.id, input.tagIds);
+          } else {
+            await this.replaceSplitTags(split.id, input.tagIds);
+          }
+        }
+
+        updatedCount++;
+        continue;
+      }
+
+      const transaction = await this.prisma.transaction.findFirst({
+        where: { id: item.id, account: { userId } },
+      });
+      if (!transaction || transaction.isSplit) continue;
+
+      if (input.categoryId) {
+        await this.prisma.transaction.update({
+          where: { id: transaction.id },
+          data: { categoryId: input.categoryId },
+        });
+      }
+
+      if (input.tagIds !== undefined) {
+        if (input.tagMode === "add") {
+          await this.addTransactionTags(transaction.id, input.tagIds);
+        } else {
+          await this.replaceTransactionTags(transaction.id, input.tagIds);
+        }
+      }
+
+      updatedCount++;
+    }
+
+    await this.invalidateSpendingCache(userId);
+    return { updatedCount };
+  }
+
   async replaceTransactionTags(transactionId: string, tagIds: string[]) {
     await this.prisma.transactionTag.deleteMany({ where: { transactionId } });
     if (tagIds.length === 0) return;
@@ -359,6 +426,22 @@ export class CategoriesService {
 
   async replaceSplitTags(splitId: string, tagIds: string[]) {
     await this.prisma.transactionSplitTag.deleteMany({ where: { splitId } });
+    if (tagIds.length === 0) return;
+    await this.prisma.transactionSplitTag.createMany({
+      data: tagIds.map((tagId) => ({ splitId, tagId })),
+      skipDuplicates: true,
+    });
+  }
+
+  async addTransactionTags(transactionId: string, tagIds: string[]) {
+    if (tagIds.length === 0) return;
+    await this.prisma.transactionTag.createMany({
+      data: tagIds.map((tagId) => ({ transactionId, tagId })),
+      skipDuplicates: true,
+    });
+  }
+
+  async addSplitTags(splitId: string, tagIds: string[]) {
     if (tagIds.length === 0) return;
     await this.prisma.transactionSplitTag.createMany({
       data: tagIds.map((tagId) => ({ splitId, tagId })),

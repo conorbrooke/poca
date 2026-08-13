@@ -61,6 +61,27 @@ export type RecategorizeTransactionInput = z.infer<
   typeof recategorizeTransactionSchema
 >;
 
+export const bulkEditItemSchema = z.object({
+  kind: z.enum(["transaction", "split"]),
+  id: z.string().min(1),
+});
+
+export const bulkEditTransactionsSchema = z
+  .object({
+    items: z.array(bulkEditItemSchema).min(1).max(100),
+    categoryId: z.string().min(1).optional(),
+    tagIds: z.array(z.string().min(1)).optional(),
+    tagMode: z.enum(["set", "add"]).default("set"),
+  })
+  .refine(
+    (value) => value.categoryId !== undefined || value.tagIds !== undefined,
+    "Provide a category and/or tags to update",
+  );
+
+export type BulkEditTransactionsInput = z.infer<
+  typeof bulkEditTransactionsSchema
+>;
+
 export const spendingTransactionsQuerySchema = z.object({
   range: rangeEnum.default("month"),
   bankConnectionId: z.string().min(1).optional(),

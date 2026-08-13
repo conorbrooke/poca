@@ -871,8 +871,45 @@ button {
   cursor: pointer;
 }
 
-.transaction-row.clickable:hover {
+.transaction-row.selectable {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  padding: 0;
+}
+
+.transaction-row.selectable.selected {
+  background: var(--accent-glow);
+}
+
+.transaction-row-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.transaction-select {
+  display: flex;
+  align-items: center;
+  padding-left: 1rem;
+}
+
+.transaction-row.clickable:hover,
+.transaction-row-body:hover {
   background: var(--surface-hover);
+}
+
+.transaction-row.selectable.selected .transaction-row-body:hover {
+  background: transparent;
 }
 
 .modal-backdrop {

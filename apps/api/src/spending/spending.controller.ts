@@ -16,6 +16,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import {
   categoryIdParamSchema,
+  bulkEditTransactionsSchema,
   createCategorySchema,
   createTagSchema,
   recategorizeTransactionSchema,
@@ -151,6 +152,17 @@ export class SpendingController {
     );
     const userId = await this.demoUserId();
     return this.spendingService.listCategoryTransactions(userId, id, input);
+  }
+
+  @Patch("transactions/bulk")
+  async bulkEditTransactions(@Body() body: unknown) {
+    const input = parseOrThrow(
+      bulkEditTransactionsSchema,
+      body,
+      "Bulk edit transactions body",
+    );
+    const userId = await this.demoUserId();
+    return this.categoriesService.bulkEditTransactions(userId, input);
   }
 
   @Get("transactions/:id")

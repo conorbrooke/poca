@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SPENDING_RANGES } from "@poca/shared";
-import { RecategorizePanel } from "../../../../../components/recategorize-panel";
+import { SelectableTransactionList } from "../../../../../components/selectable-transaction-list";
 import { apiFetch } from "../../../../../lib/api";
-import { formatDate, formatMoney } from "../../../../../lib/format";
+import { formatMoney } from "../../../../../lib/format";
 import { useSpendingRange } from "../../../../../lib/spending-range";
 import type {
   CategoryOption,
@@ -29,7 +29,6 @@ export function TagDetailClient({ tagId }: TagDetailClientProps) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTx, setSelectedTx] = useState<SpendingTransaction | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -142,47 +141,15 @@ export function TagDetailClient({ tagId }: TagDetailClientProps) {
       </div>
 
       <h2 className="section-title">Transactions</h2>
-      <div className="transaction-list">
-        {transactions.map((tx) => (
-          <button
-            key={`${tx.kind}-${tx.id}`}
-            type="button"
-            className="transaction-row clickable"
-            onClick={() => setSelectedTx(tx)}
-          >
-            <div className="transaction-main">
-              <p className="transaction-title">
-                {tx.payeeLabel ?? tx.description}
-                {tx.kind === "split" ? (
-                  <span className="split-badge">Split</span>
-                ) : null}
-              </p>
-              <p className="transaction-subtitle">
-                {tx.categoryName ?? "Uncategorized"}
-              </p>
-              <div className="transaction-meta">
-                <span>{formatDate(tx.bookedAt)}</span>
-                <span>{tx.institutionName}</span>
-              </div>
-            </div>
-            <p className="transaction-amount expense">
-              {formatMoney(tx.amount, tx.currency, { signed: true })}
-            </p>
-          </button>
-        ))}
-      </div>
+      <SelectableTransactionList
+        transactions={transactions}
+        categories={categories}
+        onReload={() => void loadData()}
+        subtitle={(tx) => tx.categoryName ?? "Uncategorized"}
+      />
 
       {nextCursor ? (
         <p className="bank-meta">More transactions available — open a category for paging.</p>
-      ) : null}
-
-      {selectedTx ? (
-        <RecategorizePanel
-          transaction={selectedTx}
-          categories={categories}
-          onClose={() => setSelectedTx(null)}
-          onSaved={() => void loadData()}
-        />
       ) : null}
     </div>
   );
