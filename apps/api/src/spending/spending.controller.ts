@@ -73,6 +73,12 @@ export class SpendingController {
     return this.categoriesService.updateCategory(userId, categoryId, input);
   }
 
+  @Delete("categories/:id")
+  async deleteCategory(@Param("id") categoryId: string) {
+    const userId = await this.demoUserId();
+    return this.categoriesService.deleteCategory(userId, categoryId);
+  }
+
   @Post("categorize")
   async categorizeAll() {
     const userId = await this.demoUserId();

@@ -1040,6 +1040,15 @@ button {
   color: var(--accent);
 }
 
+.category-edit-form {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
 @media (max-width: 720px) {
   .spending-category-row {
     grid-template-columns: 1fr;

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SPENDING_RANGES } from "@poca/shared";
 import { RecategorizePanel } from "../../../../components/recategorize-panel";
 import { apiFetch } from "../../../../lib/api";
@@ -18,6 +18,7 @@ type CategoryClientProps = {
 };
 
 export function CategoryClient({ categoryId }: CategoryClientProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const range = searchParams.get("range") ?? "month";
   const bankConnectionId = searchParams.get("bank") ?? undefined;
@@ -32,8 +33,11 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTx, setSelectedTx] = useState<SpendingTransaction | null>(null);
+  const [nameValue, setNameValue] = useState("");
   const [iconValue, setIconValue] = useState("");
-  const [savingIcon, setSavingIcon] = useState(false);
+  const [colorValue, setColorValue] = useState("#6366f1");
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState(false);
 
   const queryBase = useCallback(() => {
     const params = new URLSearchParams({ range });
@@ -58,7 +62,9 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
         ),
       ]);
       setDetail(detailRes);
+      setNameValue(detailRes.category.name);
       setIconValue(detailRes.category.icon ?? "");
+      setColorValue(detailRes.category.color);
       setCategories(categoryList);
       setTransactions(txRes.transactions);
       setNextCursor(txRes.nextCursor);
@@ -91,20 +97,53 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
     }
   }
 
-  async function saveIcon() {
-    setSavingIcon(true);
+  async function saveCategory() {
+    setSavingCategory(true);
     setError(null);
     try {
       await apiFetch(`/spending/categories/${categoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ icon: iconValue.trim() || null }),
+        body: JSON.stringify({
+          name: nameValue.trim(),
+          icon: iconValue.trim() || null,
+          color: colorValue,
+        }),
       });
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update icon");
+      setError(err instanceof Error ? err.message : "Could not update category");
     } finally {
-      setSavingIcon(false);
+      setSavingCategory(false);
+    }
+  }
+
+  async function deleteCategory() {
+    if (
+      !window.confirm(
+        "Delete this category? All its transactions and split lines will move to Other.",
+      )
+    ) {
+      return;
+    }
+
+    setDeletingCategory(true);
+    setError(null);
+    try {
+      await apiFetch(`/spending/categories/${categoryId}`, {
+        method: "DELETE",
+      });
+      router.push(
+        `/spending?${new URLSearchParams({
+          range,
+          ...(bankConnectionId ? { bank: bankConnectionId } : {}),
+        }).toString()}`,
+      );
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete category");
+    } finally {
+      setDeletingCategory(false);
     }
   }
 
@@ -126,11 +165,11 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
     );
   }
 
-  const backParams = new URLSearchParams();
+  const backParams = new URLSearchParams({ range });
   if (bankConnectionId) backParams.set("bank", bankConnectionId);
-  const backHref = backParams.toString()
-    ? `/spending?${backParams.toString()}`
-    : "/spending";
+  const backHref = `/spending?${backParams.toString()}`;
+
+  const isSystemCategory = detail.category.isSystem;
 
   return (
     <div>
@@ -147,12 +186,12 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
         <div className="spending-category-main">
           <span
             className="spending-category-icon large"
-            style={{ background: `${detail.category.color}22` }}
+            style={{ background: `${colorValue}22` }}
           >
-            {detail.category.icon ?? "•"}
+            {iconValue || detail.category.icon || "•"}
           </span>
           <div>
-            <h2 className="spending-total">{detail.category.name}</h2>
+            <h2 className="spending-total">{nameValue || detail.category.name}</h2>
             <p className="bank-meta">
               {formatMoney(detail.totalSpent)} · {detail.transactionCount}{" "}
               transactions ·{" "}
@@ -160,25 +199,75 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
             </p>
           </div>
         </div>
-        <label className="login-label" style={{ marginTop: "1rem" }}>
-          Category icon (one or two emojis)
-          <div className="tag-chip-row">
+        <div className="category-edit-form">
+          <label className="login-label">
+            Name
+            <input
+              className="login-input"
+              value={nameValue}
+              onChange={(event) => setNameValue(event.target.value)}
+              disabled={isSystemCategory}
+            />
+          </label>
+          <label className="login-label">
+            Icon (one or two emojis)
             <input
               className="login-input"
               value={iconValue}
               onChange={(event) => setIconValue(event.target.value)}
               placeholder="⛽ or ⛽🚗"
             />
+          </label>
+          <label className="login-label">
+            Colour
+            <div className="tag-chip-row">
+              <input
+                className="login-input"
+                type="color"
+                value={colorValue}
+                onChange={(event) => setColorValue(event.target.value)}
+                style={{ width: "4rem", padding: "0.25rem" }}
+              />
+              <input
+                className="login-input"
+                value={colorValue}
+                onChange={(event) => setColorValue(event.target.value)}
+                placeholder="#6366f1"
+              />
+            </div>
+          </label>
+          <div className="tag-chip-row">
             <button
               type="button"
-              className="btn btn-secondary"
-              disabled={savingIcon}
-              onClick={() => void saveIcon()}
+              className="btn btn-primary"
+              disabled={savingCategory || !nameValue.trim()}
+              onClick={() => void saveCategory()}
             >
-              Save icon
+              {savingCategory ? "Saving…" : "Save category"}
             </button>
+            {!isSystemCategory ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={deletingCategory}
+                onClick={() => void deleteCategory()}
+              >
+                {deletingCategory ? "Deleting…" : "Delete category"}
+              </button>
+            ) : null}
           </div>
-        </label>
+          {isSystemCategory ? (
+            <p className="bank-meta">
+              Other is a system category — you can change its icon and colour, but
+              not its name or delete it.
+            </p>
+          ) : (
+            <p className="bank-meta">
+              Deleting moves all transactions and split lines in this category to
+              Other.
+            </p>
+          )}
+        </div>
       </div>
 
       <h2 className="section-title">Merchants</h2>

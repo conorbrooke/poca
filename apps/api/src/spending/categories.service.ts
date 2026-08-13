@@ -111,7 +111,25 @@ export class CategoriesService {
     });
     if (!category) throw new NotFoundException("Category not found");
 
-    return this.prisma.category.update({
+    if (
+      category.isSystem &&
+      input.name &&
+      input.name.trim() !== category.name
+    ) {
+      throw new BadRequestException("System categories cannot be renamed");
+    }
+
+    if (input.name) {
+      const name = input.name.trim();
+      const duplicate = await this.prisma.category.findFirst({
+        where: { userId, name, id: { not: categoryId } },
+      });
+      if (duplicate) {
+        throw new BadRequestException("A category with this name already exists");
+      }
+    }
+
+    const updated = await this.prisma.category.update({
       where: { id: categoryId },
       data: {
         ...(input.name ? { name: input.name.trim() } : {}),
@@ -119,6 +137,58 @@ export class CategoriesService {
         ...(input.icon !== undefined ? { icon: input.icon } : {}),
       },
     });
+
+    await this.invalidateSpendingCache(userId);
+    return updated;
+  }
+
+  async deleteCategory(userId: string, categoryId: string) {
+    const category = await this.prisma.category.findFirst({
+      where: { id: categoryId, userId },
+    });
+    if (!category) throw new NotFoundException("Category not found");
+    if (category.isSystem) {
+      throw new BadRequestException("System categories cannot be deleted");
+    }
+
+    const otherCategoryId = await this.getOtherCategoryId(userId);
+
+    const result = await this.prisma.$transaction(async (db) => {
+      const movedTransactions = await db.transaction.updateMany({
+        where: {
+          categoryId,
+          account: { userId },
+        },
+        data: { categoryId: otherCategoryId },
+      });
+
+      const movedSplits = await db.transactionSplit.updateMany({
+        where: {
+          categoryId,
+          transaction: { account: { userId } },
+        },
+        data: { categoryId: otherCategoryId },
+      });
+
+      await db.categoryRule.updateMany({
+        where: { categoryId, userId },
+        data: { categoryId: otherCategoryId },
+      });
+
+      await db.categoryPeriodStat.deleteMany({
+        where: { userId, categoryId },
+      });
+
+      await db.category.delete({ where: { id: categoryId } });
+
+      return {
+        movedTransactions: movedTransactions.count,
+        movedSplits: movedSplits.count,
+      };
+    });
+
+    await this.invalidateSpendingCache(userId);
+    return result;
   }
 
   async getOtherCategoryId(userId: string): Promise<string> {
