@@ -52,3 +52,22 @@ export async function apiFetch<T>(
 
   return res.json() as Promise<T>;
 }
+
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const headers = new Headers(apiFetchHeaders());
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(apiUrl(path), {
+    method: "POST",
+    headers,
+    body: form,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Request failed (${res.status})`);
+  }
+
+  return res.json() as Promise<T>;
+}

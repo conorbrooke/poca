@@ -784,19 +784,24 @@ button {
 }
 
 .spending-category-icon {
-  width: 44px;
+  min-width: 44px;
+  width: auto;
   height: 44px;
+  padding: 0 6px;
   border-radius: 12px;
   display: grid;
   place-items: center;
   font-size: 1.25rem;
+  line-height: 1;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .spending-category-icon.large {
-  width: 56px;
+  min-width: 56px;
   height: 56px;
   font-size: 1.5rem;
+  padding: 0 8px;
 }
 
 .spending-category-name {
@@ -882,7 +887,7 @@ button {
 }
 
 .modal-panel {
-  width: min(100%, 520px);
+  width: min(100%, 640px);
   max-height: 90vh;
   overflow: auto;
   padding: 1.25rem;
@@ -937,6 +942,102 @@ button {
   background: rgba(251, 191, 36, 0.12);
   color: var(--warning);
   border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.tag-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.tag-chip.active {
+  border-color: var(--accent-dim);
+  background: var(--accent-glow);
+  color: var(--text);
+}
+
+.tag-chip-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.split-line-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  background: var(--bg-elevated);
+}
+
+.split-line-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.receipt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.receipt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.spending-subnav {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.transaction-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.transaction-tag {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--muted);
+}
+
+.split-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
 
 @media (max-width: 720px) {

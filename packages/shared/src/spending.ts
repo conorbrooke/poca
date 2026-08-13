@@ -10,9 +10,21 @@ export const SPENDING_RANGES = [
 
 export type SpendingRangeId = (typeof SPENDING_RANGES)[number]["id"];
 
+const rangeEnum = z.enum(["week", "month", "quarter", "6months", "year"]);
+
+function parseTagIds(value: unknown): string[] | undefined {
+  if (value == null || value === "") return undefined;
+  const parts = Array.isArray(value)
+    ? value.map(String)
+    : String(value).split(",");
+  const ids = parts.map((item) => item.trim()).filter(Boolean);
+  return ids.length > 0 ? ids : undefined;
+}
+
 export const spendingQuerySchema = z.object({
-  range: z.enum(["week", "month", "quarter", "6months", "year"]).default("month"),
+  range: rangeEnum.default("month"),
   bankConnectionId: z.string().min(1).optional(),
+  tagIds: z.preprocess(parseTagIds, z.array(z.string().min(1)).optional()),
 });
 
 export type SpendingQuery = z.infer<typeof spendingQuerySchema>;
@@ -24,16 +36,25 @@ export const categoryIdParamSchema = z.object({
 export const createCategorySchema = z.object({
   name: z.string().min(1).max(64),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  icon: z.string().max(8).optional(),
+  icon: z.string().max(32).optional(),
 });
 
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+
+export const updateCategorySchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  icon: z.string().max(32).nullable().optional(),
+});
+
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 
 export const recategorizeTransactionSchema = z.object({
   categoryId: z.string().min(1).optional(),
   payeeLabel: z.string().min(1).max(120),
   createRule: z.boolean().default(false),
   applyToSimilar: z.boolean().default(false),
+  tagIds: z.array(z.string().min(1)).optional(),
 });
 
 export type RecategorizeTransactionInput = z.infer<
@@ -41,9 +62,10 @@ export type RecategorizeTransactionInput = z.infer<
 >;
 
 export const spendingTransactionsQuerySchema = z.object({
-  range: z.enum(["week", "month", "quarter", "6months", "year"]).default("month"),
+  range: rangeEnum.default("month"),
   bankConnectionId: z.string().min(1).optional(),
   payeeLabel: z.string().min(1).optional(),
+  tagIds: z.preprocess(parseTagIds, z.array(z.string().min(1)).optional()),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().min(1).optional(),
 });
@@ -51,6 +73,53 @@ export const spendingTransactionsQuerySchema = z.object({
 export type SpendingTransactionsQuery = z.infer<
   typeof spendingTransactionsQuerySchema
 >;
+
+export const createTagSchema = z.object({
+  name: z.string().min(1).max(64),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  icon: z.string().max(32).optional(),
+});
+
+export type CreateTagInput = z.infer<typeof createTagSchema>;
+
+export const updateTagSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  icon: z.string().max(32).nullable().optional(),
+});
+
+export type UpdateTagInput = z.infer<typeof updateTagSchema>;
+
+export const splitLineSchema = z.object({
+  amount: z.number().refine((value) => value !== 0, "Amount cannot be zero"),
+  categoryId: z.string().min(1),
+  payeeLabel: z.string().min(1).max(120),
+  description: z.string().max(240).optional(),
+  tagIds: z.array(z.string().min(1)).default([]),
+});
+
+export const replaceSplitsSchema = z.object({
+  splits: z.array(splitLineSchema).min(2),
+});
+
+export type ReplaceSplitsInput = z.infer<typeof replaceSplitsSchema>;
+
+export const unsplitTransactionSchema = z.object({
+  categoryId: z.string().min(1),
+  payeeLabel: z.string().min(1).max(120),
+  tagIds: z.array(z.string().min(1)).default([]),
+});
+
+export type UnsplitTransactionInput = z.infer<typeof unsplitTransactionSchema>;
+
+export const updateSplitSchema = z.object({
+  categoryId: z.string().min(1).optional(),
+  payeeLabel: z.string().min(1).max(120).optional(),
+  description: z.string().max(240).nullable().optional(),
+  tagIds: z.array(z.string().min(1)).optional(),
+});
+
+export type UpdateSplitInput = z.infer<typeof updateSplitSchema>;
 
 export type SpendingCategorySummary = {
   id: string;
@@ -68,6 +137,57 @@ export type SpendingPayeeSummary = {
   totalSpent: number;
   transactionCount: number;
   share: number;
+};
+
+export type TagOption = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string | null;
+};
+
+export type ReceiptSummary = {
+  id: string;
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+export type SplitLineSummary = {
+  id: string;
+  amount: number;
+  categoryId: string;
+  categoryName: string | null;
+  payeeLabel: string;
+  description: string | null;
+  tags: TagOption[];
+};
+
+export type SpendingTransaction = {
+  kind: "transaction" | "split";
+  id: string;
+  transactionId: string;
+  splitId: string | null;
+  amount: number;
+  currency: string;
+  description: string;
+  merchant: string | null;
+  payeeLabel: string | null;
+  bookedAt: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  institutionName: string;
+  externalId: string | null;
+  isSplit: boolean;
+  splitOutOfBalance: boolean;
+  tags: TagOption[];
+  receiptCount: number;
+};
+
+export type TransactionDetail = SpendingTransaction & {
+  receipts: ReceiptSummary[];
+  splits: SplitLineSummary[];
 };
 
 export type SpendingSummaryResponse = {
@@ -95,6 +215,16 @@ export type CategoryDetailResponse = {
   transactionCount: number;
   payees: SpendingPayeeSummary[];
   cached: boolean;
+};
+
+export type TagSummaryResponse = {
+  tag: TagOption;
+  range: SpendingRangeId;
+  periodStart: string;
+  periodEnd: string;
+  totalSpent: number;
+  transactionCount: number;
+  categories: SpendingCategorySummary[];
 };
 
 export const DEFAULT_CATEGORY_DEFINITIONS = [

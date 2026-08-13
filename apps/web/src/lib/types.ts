@@ -97,6 +97,12 @@ export type {
   SpendingCategorySummary,
   SpendingPayeeSummary,
   SpendingRangeId,
+  SpendingTransaction,
+  TransactionDetail,
+  TagOption,
+  TagSummaryResponse,
+  ReceiptSummary,
+  SplitLineSummary,
 } from "@poca/shared";
 
 export type CategoryOption = {
@@ -105,17 +111,4 @@ export type CategoryOption = {
   color: string;
   icon: string | null;
   isSystem: boolean;
-};
-
-export type SpendingTransaction = {
-  id: string;
-  amount: number;
-  currency: string;
-  description: string;
-  merchant: string | null;
-  payeeLabel: string | null;
-  bookedAt: string;
-  categoryId: string | null;
-  categoryName: string | null;
-  institutionName: string;
 };

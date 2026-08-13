@@ -6,8 +6,20 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/spending", label: "Spending" },
+  { href: "/spending/tags", label: "Tags" },
   { href: "/sync", label: "Connect bank" },
 ];
+
+function isActive(pathname: string, href: string) {
+  if (href === "/spending") {
+    return (
+      pathname === "/spending" ||
+      (pathname.startsWith("/spending/") &&
+        !pathname.startsWith("/spending/tags"))
+    );
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function Nav() {
   const pathname = usePathname();
@@ -24,7 +36,7 @@ export function Nav() {
             <Link
               key={link.href}
               href={link.href}
-              className={`nav-link${pathname.startsWith(link.href) ? " active" : ""}`}
+              className={`nav-link${isActive(pathname, link.href) ? " active" : ""}`}
             >
               {link.label}
             </Link>

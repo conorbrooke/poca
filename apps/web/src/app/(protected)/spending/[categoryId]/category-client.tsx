@@ -22,6 +22,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const range = searchParams.get("range") ?? "month";
   const bankConnectionId = searchParams.get("bank") ?? undefined;
   const payeeFilter = searchParams.get("payee") ?? undefined;
+  const tagIds = searchParams.get("tagIds") ?? undefined;
 
   const [detail, setDetail] = useState<CategoryDetailResponse | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -31,13 +32,16 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTx, setSelectedTx] = useState<SpendingTransaction | null>(null);
+  const [iconValue, setIconValue] = useState("");
+  const [savingIcon, setSavingIcon] = useState(false);
 
   const queryBase = useCallback(() => {
     const params = new URLSearchParams({ range });
     if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
     if (payeeFilter) params.set("payeeLabel", payeeFilter);
+    if (tagIds) params.set("tagIds", tagIds);
     return params;
-  }, [range, bankConnectionId, payeeFilter]);
+  }, [range, bankConnectionId, payeeFilter, tagIds]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -54,6 +58,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
         ),
       ]);
       setDetail(detailRes);
+      setIconValue(detailRes.category.icon ?? "");
       setCategories(categoryList);
       setTransactions(txRes.transactions);
       setNextCursor(txRes.nextCursor);
@@ -86,6 +91,23 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
     }
   }
 
+  async function saveIcon() {
+    setSavingIcon(true);
+    setError(null);
+    try {
+      await apiFetch(`/spending/categories/${categoryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ icon: iconValue.trim() || null }),
+      });
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update icon");
+    } finally {
+      setSavingIcon(false);
+    }
+  }
+
   if (loading && !detail) {
     return (
       <div className="empty-state">
@@ -104,8 +126,10 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
     );
   }
 
-  const backHref = bankConnectionId
-    ? `/spending?bank=${bankConnectionId}`
+  const backParams = new URLSearchParams();
+  if (bankConnectionId) backParams.set("bank", bankConnectionId);
+  const backHref = backParams.toString()
+    ? `/spending?${backParams.toString()}`
     : "/spending";
 
   return (
@@ -136,6 +160,25 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
             </p>
           </div>
         </div>
+        <label className="login-label" style={{ marginTop: "1rem" }}>
+          Category icon (one or two emojis)
+          <div className="tag-chip-row">
+            <input
+              className="login-input"
+              value={iconValue}
+              onChange={(event) => setIconValue(event.target.value)}
+              placeholder="⛽ or ⛽🚗"
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={savingIcon}
+              onClick={() => void saveIcon()}
+            >
+              Save icon
+            </button>
+          </div>
+        </label>
       </div>
 
       <h2 className="section-title">Merchants</h2>
@@ -148,6 +191,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
           detail.payees.map((payee) => {
             const params = new URLSearchParams({ range, payee: payee.payeeLabel });
             if (bankConnectionId) params.set("bank", bankConnectionId);
+            if (tagIds) params.set("tagIds", tagIds);
             const active = payeeFilter === payee.payeeLabel;
             return (
               <Link
@@ -176,7 +220,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
         </h2>
         {payeeFilter ? (
           <Link
-            href={`/spending/${categoryId}?range=${range}${bankConnectionId ? `&bank=${bankConnectionId}` : ""}`}
+            href={`/spending/${categoryId}?range=${range}${bankConnectionId ? `&bank=${bankConnectionId}` : ""}${tagIds ? `&tagIds=${tagIds}` : ""}`}
             className="bank-meta"
           >
             Clear merchant filter
@@ -187,17 +231,41 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
       <div className="transaction-list">
         {transactions.map((tx) => (
           <button
-            key={tx.id}
+            key={`${tx.kind}-${tx.id}`}
             type="button"
             className="transaction-row clickable"
             onClick={() => setSelectedTx(tx)}
           >
             <div className="transaction-main">
-              <p className="transaction-title">{tx.payeeLabel ?? tx.description}</p>
-              <p className="transaction-subtitle">{tx.description}</p>
+              <p className="transaction-title">
+                {tx.payeeLabel ?? tx.description}
+                {tx.kind === "split" ? (
+                  <span className="split-badge">Split</span>
+                ) : null}
+              </p>
+              <p className="transaction-subtitle">
+                {tx.kind === "split"
+                  ? `Part of ${tx.description}`
+                  : tx.description}
+              </p>
+              {tx.tags.length > 0 ? (
+                <div className="transaction-tags">
+                  {tx.tags.map((tag) => (
+                    <span key={tag.id} className="transaction-tag">
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <div className="transaction-meta">
                 <span>{formatDate(tx.bookedAt)}</span>
                 <span>{tx.institutionName}</span>
+                {tx.receiptCount > 0 ? (
+                  <span>
+                    {tx.receiptCount} receipt{tx.receiptCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+                {tx.splitOutOfBalance ? <span>Out of balance</span> : null}
               </div>
             </div>
             <p className="transaction-amount expense">

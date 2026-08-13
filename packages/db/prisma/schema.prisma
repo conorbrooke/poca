@@ -41,6 +41,7 @@ model User {
   categories       Category[]
   categoryRules    CategoryRule[]
   categoryPeriodStats CategoryPeriodStat[]
+  tags             Tag[]
   syncJobs         SyncJob[]
 
   @@index([email])
@@ -123,6 +124,7 @@ model Category {
 
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  splits       TransactionSplit[]
   rules        CategoryRule[]
   periodStats  CategoryPeriodStat[]
 
@@ -143,6 +145,7 @@ model CategoryRule {
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  tags     CategoryRuleTag[]
 
   @@index([userId])
   @@index([categoryId])
@@ -187,6 +190,35 @@ model PayeePeriodStat {
   @@index([categoryPeriodStatId])
 }
 
+model Tag {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  color     String   @default("#6366f1")
+  icon      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions TransactionTag[]
+  splits       TransactionSplitTag[]
+  rules        CategoryRuleTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model CategoryRuleTag {
+  ruleId String
+  tagId  String
+
+  rule CategoryRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  tag  Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, tagId])
+  @@index([tagId])
+}
+
 model Transaction {
   id          String   @id @default(cuid())
   accountId   String
@@ -198,17 +230,77 @@ model Transaction {
   merchant    String?
   payeeLabel  String?
   bookedAt    DateTime
+  isSplit     Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  account  Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  account  Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tags     TransactionTag[]
+  splits   TransactionSplit[]
+  receipts TransactionReceipt[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
   @@index([categoryId])
   @@index([bookedAt])
   @@index([payeeLabel])
+  @@index([isSplit])
+}
+
+model TransactionTag {
+  transactionId String
+  tagId         String
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+  @@index([tagId])
+}
+
+model TransactionSplit {
+  id            String   @id @default(cuid())
+  transactionId String
+  categoryId    String
+  amount        Decimal  @db.Decimal(14, 2)
+  payeeLabel    String
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transaction Transaction           @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  category    Category              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  tags        TransactionSplitTag[]
+
+  @@index([transactionId])
+  @@index([categoryId])
+}
+
+model TransactionSplitTag {
+  splitId String
+  tagId   String
+
+  split TransactionSplit @relation(fields: [splitId], references: [id], onDelete: Cascade)
+  tag   Tag              @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([splitId, tagId])
+  @@index([tagId])
+}
+
+model TransactionReceipt {
+  id            String   @id @default(cuid())
+  transactionId String
+  originalName  String
+  storedName    String
+  mimeType      String
+  sizeBytes     Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
 }
 
 model SyncJob {

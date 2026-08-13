@@ -30,6 +30,7 @@ export type RuleMatch = {
   matchText: string;
   priority: number;
   source: string;
+  tagIds: string[];
 };
 
 type RulesFile = {
@@ -54,6 +55,7 @@ export function matchTransaction(
     priority: number;
     source: string;
     category: { name: string };
+    tags?: Array<{ tagId: string }>;
   }>,
 ): RuleMatch | null {
   const haystack = normalizeSearchText(description, merchant);
@@ -66,6 +68,7 @@ export function matchTransaction(
       matchText: rule.matchText,
       priority: rule.priority + 10_000,
       source: rule.source,
+      tagIds: rule.tags?.map((tag) => tag.tagId) ?? [],
     })),
     ...loadSystemRules().map((rule) => ({
       categoryName: rule.category,
@@ -73,6 +76,7 @@ export function matchTransaction(
       matchText: rule.matchText,
       priority: rule.priority,
       source: rule.source,
+      tagIds: [] as string[],
     })),
   ];
 

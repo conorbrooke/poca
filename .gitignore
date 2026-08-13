@@ -14,3 +14,7 @@ keys/
 # Prisma
 packages/db/src/generated
 packages/db/generated
+
+# Receipt uploads
+data/receipts
+apps/api/data

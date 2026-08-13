@@ -6,7 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { SPENDING_RANGES } from "@poca/shared";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
-import type { SpendingCategorySummary, SpendingSummaryResponse } from "../../../lib/types";
+import type {
+  SpendingCategorySummary,
+  SpendingSummaryResponse,
+  TagOption,
+} from "../../../lib/types";
 
 type SpendingClientProps = {
   initialRange?: string;
@@ -16,6 +20,8 @@ export function SpendingClient({ initialRange = "month" }: SpendingClientProps) 
   const searchParams = useSearchParams();
   const [range, setRange] = useState(initialRange);
   const [data, setData] = useState<SpendingSummaryResponse | null>(null);
+  const [tags, setTags] = useState<TagOption[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,19 +32,20 @@ export function SpendingClient({ initialRange = "month" }: SpendingClientProps) 
     setError(null);
     try {
       const params = new URLSearchParams({ range });
-      if (bankConnectionId) {
-        params.set("bankConnectionId", bankConnectionId);
-      }
-      const summary = await apiFetch<SpendingSummaryResponse>(
-        `/spending/summary?${params.toString()}`,
-      );
+      if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
+      if (selectedTagIds.length > 0) params.set("tagIds", selectedTagIds.join(","));
+      const [summary, tagList] = await Promise.all([
+        apiFetch<SpendingSummaryResponse>(`/spending/summary?${params.toString()}`),
+        apiFetch<TagOption[]>("/spending/tags"),
+      ]);
       setData(summary);
+      setTags(tagList);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load spending");
     } finally {
       setLoading(false);
     }
-  }, [range, bankConnectionId]);
+  }, [range, bankConnectionId, selectedTagIds]);
 
   useEffect(() => {
     void loadSummary();
@@ -65,10 +72,22 @@ export function SpendingClient({ initialRange = "month" }: SpendingClientProps) 
 
   const categories = data?.categories ?? [];
   const otherCategory = categories.find((c) => c.name === "Other");
+  const tagsHref = bankConnectionId
+    ? `/spending/tags?bank=${bankConnectionId}`
+    : "/spending/tags";
 
   return (
     <div>
       {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <div className="spending-subnav">
+        <Link href="/spending" className="tag-chip active">
+          Categories
+        </Link>
+        <Link href={tagsHref} className="tag-chip">
+          Tags
+        </Link>
+      </div>
 
       <div className="spending-hero card">
         <div className="spending-hero-top">
@@ -105,6 +124,35 @@ export function SpendingClient({ initialRange = "month" }: SpendingClientProps) 
         </div>
       </div>
 
+      {tags.length > 0 ? (
+        <div className="card" style={{ marginBottom: "1rem", padding: "1rem" }}>
+          <p className="login-label">Filter by tags</p>
+          <div className="tag-chip-row">
+            {tags.map((tag) => {
+              const active = selectedTagIds.includes(tag.id);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  className={`tag-chip${active ? " active" : ""}`}
+                  onClick={() =>
+                    setSelectedTagIds((current) =>
+                      active
+                        ? current.filter((id) => id !== tag.id)
+                        : [...current, tag.id],
+                    )
+                  }
+                >
+                  <span className="tag-chip-dot" style={{ background: tag.color }} />
+                  {tag.icon ? `${tag.icon} ` : ""}
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {otherCategory && otherCategory.totalSpent > 0 ? (
         <div className="alert alert-warning spending-other-banner">
           <strong>{formatMoney(otherCategory.totalSpent)}</strong> in{" "}
@@ -128,6 +176,7 @@ export function SpendingClient({ initialRange = "month" }: SpendingClientProps) 
               category={category}
               range={range}
               bankConnectionId={bankConnectionId}
+              tagIds={selectedTagIds}
             />
           ))
         )}
@@ -140,19 +189,27 @@ function CategoryRow({
   category,
   range,
   bankConnectionId,
+  tagIds,
 }: {
   category: SpendingCategorySummary;
   range: string;
   bankConnectionId?: string;
+  tagIds: string[];
 }) {
-  const href = bankConnectionId
-    ? `/spending/${category.id}?range=${range}&bank=${bankConnectionId}`
-    : `/spending/${category.id}?range=${range}`;
+  const params = new URLSearchParams({ range });
+  if (bankConnectionId) params.set("bank", bankConnectionId);
+  if (tagIds.length > 0) params.set("tagIds", tagIds.join(","));
 
   return (
-    <Link href={href} className={`spending-category-row${category.isSystem ? " other" : ""}`}>
+    <Link
+      href={`/spending/${category.id}?${params.toString()}`}
+      className={`spending-category-row${category.isSystem ? " other" : ""}`}
+    >
       <div className="spending-category-main">
-        <span className="spending-category-icon" style={{ background: `${category.color}22` }}>
+        <span
+          className="spending-category-icon"
+          style={{ background: `${category.color}22` }}
+        >
           {category.icon ?? "•"}
         </span>
         <div className="spending-category-copy">

@@ -34,7 +34,7 @@ async function proxyRequest(
   const upstream = await fetch(target, {
     method: request.method,
     headers,
-    body: hasBody ? await request.text() : undefined,
+    body: hasBody ? Buffer.from(await request.arrayBuffer()) : undefined,
     cache: "no-store",
   });
 
@@ -42,6 +42,10 @@ async function proxyRequest(
   const upstreamType = upstream.headers.get("content-type");
   if (upstreamType) {
     responseHeaders.set("content-type", upstreamType);
+  }
+  const disposition = upstream.headers.get("content-disposition");
+  if (disposition) {
+    responseHeaders.set("content-disposition", disposition);
   }
 
   return new NextResponse(upstream.body, {

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { DEFAULT_CATEGORY_DEFINITIONS } from "@poca/shared";
 import { PrismaService } from "../prisma/prisma.module";
 import {
@@ -90,7 +94,30 @@ export class CategoriesService {
         color: input.color ?? "#6366f1",
         icon: input.icon,
       },
-      update: {},
+      update: {
+        ...(input.color ? { color: input.color } : {}),
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
+      },
+    });
+  }
+
+  async updateCategory(
+    userId: string,
+    categoryId: string,
+    input: { name?: string; color?: string; icon?: string | null },
+  ) {
+    const category = await this.prisma.category.findFirst({
+      where: { id: categoryId, userId },
+    });
+    if (!category) throw new NotFoundException("Category not found");
+
+    return this.prisma.category.update({
+      where: { id: categoryId },
+      data: {
+        ...(input.name ? { name: input.name.trim() } : {}),
+        ...(input.color ? { color: input.color } : {}),
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
+      },
     });
   }
 
@@ -111,12 +138,13 @@ export class CategoriesService {
 
     const userRules = await this.prisma.categoryRule.findMany({
       where: { userId },
-      include: { category: true },
+      include: { category: true, tags: true },
       orderBy: { priority: "desc" },
     });
 
     const transactions = await this.prisma.transaction.findMany({
       where: {
+        isSplit: false,
         account: { userId },
         ...(transactionIds ? { id: { in: transactionIds } } : {}),
       },
@@ -143,6 +171,11 @@ export class CategoriesService {
         where: { id: tx.id },
         data: { categoryId, payeeLabel },
       });
+
+      if (match?.source === "user") {
+        await this.replaceTransactionTags(tx.id, match.tagIds);
+      }
+
       updated++;
     }
 
@@ -158,6 +191,7 @@ export class CategoriesService {
       payeeLabel: string;
       createRule: boolean;
       applyToSimilar: boolean;
+      tagIds?: string[];
     },
   ) {
     const transaction = await this.prisma.transaction.findFirst({
@@ -168,8 +202,14 @@ export class CategoriesService {
       throw new NotFoundException("Transaction not found");
     }
 
+    if (transaction.isSplit && (input.categoryId || input.tagIds)) {
+      throw new BadRequestException(
+        "Split transactions can only be categorized on their sub-transactions",
+      );
+    }
+
     const categoryId = input.categoryId ?? transaction.categoryId;
-    if (!categoryId) {
+    if (!categoryId && !transaction.isSplit) {
       throw new NotFoundException("Transaction has no category");
     }
 
@@ -178,32 +218,13 @@ export class CategoriesService {
       transaction.merchant,
     );
 
-    if (input.createRule) {
-      const existingRule = await this.prisma.categoryRule.findFirst({
-        where: { userId, matchText, source: "user" },
+    if (input.createRule && categoryId) {
+      await this.upsertUserRule(userId, {
+        categoryId,
+        matchText,
+        payeeLabel: input.payeeLabel,
+        tagIds: input.tagIds,
       });
-
-      if (existingRule) {
-        await this.prisma.categoryRule.update({
-          where: { id: existingRule.id },
-          data: {
-            categoryId,
-            payeeLabel: input.payeeLabel,
-            priority: 20_000,
-          },
-        });
-      } else {
-        await this.prisma.categoryRule.create({
-          data: {
-            userId,
-            categoryId,
-            matchText,
-            payeeLabel: input.payeeLabel,
-            priority: 20_000,
-            source: "user",
-          },
-        });
-      }
     }
 
     const idsToUpdate = [transaction.id];
@@ -212,6 +233,7 @@ export class CategoriesService {
       const similar = await this.prisma.transaction.findMany({
         where: {
           account: { userId },
+          isSplit: false,
           id: { not: transaction.id },
           OR: [
             {
@@ -239,13 +261,85 @@ export class CategoriesService {
       where: { id: { in: idsToUpdate } },
       data: {
         payeeLabel: input.payeeLabel,
-        ...(input.categoryId ? { categoryId: input.categoryId } : {}),
+        ...(input.categoryId && !transaction.isSplit
+          ? { categoryId: input.categoryId }
+          : {}),
       },
     });
+
+    if (input.tagIds && !transaction.isSplit) {
+      for (const id of idsToUpdate) {
+        await this.replaceTransactionTags(id, input.tagIds);
+      }
+    }
 
     await this.invalidateSpendingCache(userId);
 
     return { updatedCount: idsToUpdate.length, matchText };
+  }
+
+  async replaceTransactionTags(transactionId: string, tagIds: string[]) {
+    await this.prisma.transactionTag.deleteMany({ where: { transactionId } });
+    if (tagIds.length === 0) return;
+    await this.prisma.transactionTag.createMany({
+      data: tagIds.map((tagId) => ({ transactionId, tagId })),
+      skipDuplicates: true,
+    });
+  }
+
+  async replaceSplitTags(splitId: string, tagIds: string[]) {
+    await this.prisma.transactionSplitTag.deleteMany({ where: { splitId } });
+    if (tagIds.length === 0) return;
+    await this.prisma.transactionSplitTag.createMany({
+      data: tagIds.map((tagId) => ({ splitId, tagId })),
+      skipDuplicates: true,
+    });
+  }
+
+  async upsertUserRule(
+    userId: string,
+    input: {
+      categoryId: string;
+      matchText: string;
+      payeeLabel: string;
+      tagIds?: string[];
+    },
+  ) {
+    const existingRule = await this.prisma.categoryRule.findFirst({
+      where: { userId, matchText: input.matchText, source: "user" },
+    });
+
+    const rule = existingRule
+      ? await this.prisma.categoryRule.update({
+          where: { id: existingRule.id },
+          data: {
+            categoryId: input.categoryId,
+            payeeLabel: input.payeeLabel,
+            priority: 20_000,
+          },
+        })
+      : await this.prisma.categoryRule.create({
+          data: {
+            userId,
+            categoryId: input.categoryId,
+            matchText: input.matchText,
+            payeeLabel: input.payeeLabel,
+            priority: 20_000,
+            source: "user",
+          },
+        });
+
+    if (input.tagIds) {
+      await this.prisma.categoryRuleTag.deleteMany({ where: { ruleId: rule.id } });
+      if (input.tagIds.length > 0) {
+        await this.prisma.categoryRuleTag.createMany({
+          data: input.tagIds.map((tagId) => ({ ruleId: rule.id, tagId })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
+    return rule;
   }
 
   async invalidateSpendingCache(userId: string) {
