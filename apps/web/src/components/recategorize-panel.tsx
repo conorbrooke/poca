@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Modal } from "./modal";
 import { apiFetch, apiUpload, apiUrl } from "../lib/api";
 import { formatMoney } from "../lib/format";
 import type {
@@ -63,13 +64,6 @@ export function RecategorizePanel({
 
   const isSplitChild = transaction.kind === "split";
   const parentIsSplit = detail?.isSplit ?? transaction.isSplit;
-
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -358,14 +352,7 @@ export function RecategorizePanel({
   const hideParentCategory = parentIsSplit && !isSplitChild;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal-panel card"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="recategorize-title"
-      >
+    <Modal onClose={onClose} labelledBy="recategorize-title">
         <div className="modal-header">
           <div>
             <p className="page-eyebrow">
@@ -762,7 +749,6 @@ export function RecategorizePanel({
           <p className="alert alert-warning">{savedMessage}</p>
         ) : null}
         {error ? <p className="alert alert-error">{error}</p> : null}
-      </div>
-    </div>
+    </Modal>
   );
 }

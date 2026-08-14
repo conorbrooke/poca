@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Modal } from "./modal";
 import { apiFetch } from "../lib/api";
 import type { CategoryOption, TagOption } from "../lib/types";
 
@@ -35,13 +36,6 @@ export function BulkEditPanel({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
-
-  useEffect(() => {
     void apiFetch<TagOption[]>("/spending/tags")
       .then(setTags)
       .catch(() => setTags([]));
@@ -72,13 +66,7 @@ export function BulkEditPanel({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal-panel card"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
+    <Modal onClose={onClose}>
         <div className="modal-header">
           <div>
             <p className="page-eyebrow">Bulk edit</p>
@@ -183,7 +171,6 @@ export function BulkEditPanel({
         >
           {saving ? "Saving…" : `Apply to ${selectedCount}`}
         </button>
-      </div>
-    </div>
+    </Modal>
   );
 }
