@@ -6,11 +6,12 @@ export const SPENDING_RANGES = [
   { id: "quarter", label: "Last 3 months", days: 90 },
   { id: "6months", label: "Last 6 months", days: 180 },
   { id: "year", label: "Last year", days: 365 },
+  { id: "all", label: "All time" },
 ] as const;
 
 export type SpendingRangeId = (typeof SPENDING_RANGES)[number]["id"];
 
-const rangeEnum = z.enum(["week", "month", "quarter", "6months", "year"]);
+const rangeEnum = z.enum(["week", "month", "quarter", "6months", "year", "all"]);
 
 function parseTagIds(value: unknown): string[] | undefined {
   if (value == null || value === "") return undefined;
