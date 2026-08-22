@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnableBankingProvider } from "@poca/bank-connect";
-import type { BankConnectProvider } from "@poca/bank-connect";
+import type { BankConnectProvider, ExternalTransaction } from "@poca/bank-connect";
 import { BankConnectionStatus, BankProvider, SyncJobStatus } from "@poca/db";
 import type {
   CompleteBankLinkInput,
@@ -488,29 +488,7 @@ export class BankService {
         );
 
         for (const tx of transactions) {
-          const saved = await this.prisma.transaction.upsert({
-            where: {
-              accountId_externalId: {
-                accountId: account.id,
-                externalId: tx.externalId,
-              },
-            },
-            create: {
-              accountId: account.id,
-              externalId: tx.externalId,
-              amount: tx.amount,
-              currency: tx.currency,
-              description: tx.description,
-              merchant: tx.merchant,
-              bookedAt: tx.bookedAt,
-            },
-            update: {
-              amount: tx.amount,
-              description: tx.description,
-              merchant: tx.merchant,
-              bookedAt: tx.bookedAt,
-            },
-          });
+          const saved = await this.upsertSyncedTransaction(account.id, tx);
           syncedTransactionIds.push(saved.id);
           syncedCount++;
         }
@@ -629,6 +607,138 @@ export class BankService {
     });
 
     return stats;
+  }
+
+  private isBankHexId(externalId: string) {
+    return /^[0-9A-F]{32}$/i.test(externalId);
+  }
+
+  /** Fallback IDs we generate when the bank omits entry_reference / transaction_id. */
+  private isFallbackSyntheticId(externalId: string) {
+    return (
+      /^\d{4}-\d{2}-\d{2}-/.test(externalId) ||
+      /^-?\d+(\.\d+)?-/.test(externalId)
+    );
+  }
+
+  private preferExternalId(next: string, current: string | null) {
+    if (!current) return next;
+    const nextBank = this.isBankHexId(next);
+    const currentBank = this.isBankHexId(current);
+    if (nextBank && !currentBank) return next;
+    if (!nextBank && currentBank) return current;
+    return next;
+  }
+
+  /**
+   * Detect the same bank row reappearing with a shifted booking date (pending → posted).
+   * Intentionally narrow: never merges two bank hex IDs or purchases on different days.
+   */
+  private isBookingDateShiftDuplicate(
+    incoming: ExternalTransaction,
+    existing: {
+      externalId: string | null;
+      bookedAt: Date;
+      amount: { toString(): string };
+      description: string;
+    },
+  ) {
+    if (existing.externalId === incoming.externalId) return false;
+
+    if (
+      existing.externalId &&
+      this.isBankHexId(existing.externalId) &&
+      this.isBankHexId(incoming.externalId)
+    ) {
+      return false;
+    }
+
+    if (existing.description !== incoming.description) return false;
+    if (Number(existing.amount.toString()) !== incoming.amount) return false;
+
+    const incomingDay = Math.floor(incoming.bookedAt.getTime() / 86_400_000);
+    const existingDay = Math.floor(existing.bookedAt.getTime() / 86_400_000);
+    if (Math.abs(incomingDay - existingDay) > 1) return false;
+
+    const incomingSynthetic = this.isFallbackSyntheticId(incoming.externalId);
+    const existingSynthetic = existing.externalId
+      ? this.isFallbackSyntheticId(existing.externalId)
+      : false;
+
+    return incomingSynthetic || existingSynthetic;
+  }
+
+  private bookingShiftWindow(bookedAt: Date) {
+    const start = new Date(bookedAt);
+    start.setDate(start.getDate() - 1);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(bookedAt);
+    end.setDate(end.getDate() + 1);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  private async upsertSyncedTransaction(
+    accountId: string,
+    tx: ExternalTransaction,
+  ) {
+    const { start, end } = this.bookingShiftWindow(tx.bookedAt);
+    const candidates = await this.prisma.transaction.findMany({
+      where: {
+        accountId,
+        amount: tx.amount,
+        description: tx.description,
+        bookedAt: { gte: start, lte: end },
+        NOT: { externalId: tx.externalId },
+      },
+      orderBy: [{ bookedAt: "desc" }, { createdAt: "asc" }],
+      take: 5,
+    });
+
+    const duplicate = candidates.find((row) =>
+      this.isBookingDateShiftDuplicate(tx, row),
+    );
+
+    if (duplicate) {
+      return this.prisma.transaction.update({
+        where: { id: duplicate.id },
+        data: {
+          externalId: this.preferExternalId(
+            tx.externalId,
+            duplicate.externalId,
+          ),
+          amount: tx.amount,
+          currency: tx.currency,
+          description: tx.description,
+          merchant: tx.merchant,
+          bookedAt: tx.bookedAt,
+        },
+      });
+    }
+
+    return this.prisma.transaction.upsert({
+      where: {
+        accountId_externalId: {
+          accountId,
+          externalId: tx.externalId,
+        },
+      },
+      create: {
+        accountId,
+        externalId: tx.externalId,
+        amount: tx.amount,
+        currency: tx.currency,
+        description: tx.description,
+        merchant: tx.merchant,
+        bookedAt: tx.bookedAt,
+      },
+      update: {
+        amount: tx.amount,
+        description: tx.description,
+        merchant: tx.merchant,
+        bookedAt: tx.bookedAt,
+      },
+    });
   }
 
   private mapRequisitionStatus(status: string): BankConnectionStatus {

@@ -247,27 +247,29 @@ export class EnableBankingProvider implements BankConnectProvider {
 
   private mapTransaction(tx: EnableBankingTransaction): ExternalTransaction {
     const rawAmount = parseFloat(tx.transaction_amount?.amount ?? "0");
-    const signedAmount =
-      tx.credit_debit_indicator === "DBIT" ? -Math.abs(rawAmount) : rawAmount;
     const description =
       tx.remittance_information?.join(" ") ??
       tx.creditor?.name ??
       tx.debtor?.name ??
       "Transaction";
     const merchant = tx.creditor?.name ?? tx.debtor?.name;
-    const dateStr =
+    const bookingDate =
       tx.booking_date ?? tx.value_date ?? new Date().toISOString().slice(0, 10);
+    const stableDate =
+      tx.value_date ?? tx.booking_date ?? bookingDate;
+    const signedAmount =
+      tx.credit_debit_indicator === "DBIT" ? -Math.abs(rawAmount) : rawAmount;
 
     return {
       externalId:
         tx.entry_reference ??
         tx.transaction_id ??
-        `${dateStr}-${signedAmount}-${description}`,
+        `${signedAmount}-${description.trim()}-${stableDate}`,
       amount: signedAmount,
       currency: tx.transaction_amount?.currency ?? "EUR",
       description,
       merchant,
-      bookedAt: new Date(dateStr),
+      bookedAt: new Date(bookingDate),
     };
   }
 }

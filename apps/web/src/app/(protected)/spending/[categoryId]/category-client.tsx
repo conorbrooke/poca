@@ -31,6 +31,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const [transactions, setTransactions] = useState<SpendingTransaction[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingTransactions, setLoadingTransactions] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nameValue, setNameValue] = useState("");
@@ -39,51 +40,87 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const [savingCategory, setSavingCategory] = useState(false);
   const [deletingCategory, setDeletingCategory] = useState(false);
 
-  const queryBase = useCallback(() => {
+  const metaParams = useCallback(() => {
     const params = new URLSearchParams({ range });
     if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
-    if (payeeFilter) params.set("payeeLabel", payeeFilter);
     if (tagIds) params.set("tagIds", tagIds);
     return params;
-  }, [range, bankConnectionId, payeeFilter, tagIds]);
+  }, [range, bankConnectionId, tagIds]);
 
-  const loadData = useCallback(async () => {
+  const transactionParams = useCallback(() => {
+    const params = metaParams();
+    if (payeeFilter) params.set("payeeLabel", payeeFilter);
+    return params;
+  }, [metaParams, payeeFilter]);
+
+  function setPayeeFilter(nextPayee: string | null) {
+    const params = new URLSearchParams({ range });
+    if (bankConnectionId) params.set("bank", bankConnectionId);
+    if (tagIds) params.set("tagIds", tagIds);
+    if (nextPayee) params.set("payee", nextPayee);
+    router.push(`/spending/${categoryId}?${params.toString()}`, { scroll: false });
+  }
+
+  const loadCategoryMeta = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = queryBase();
-      const [detailRes, categoryList, txRes] = await Promise.all([
+      const params = metaParams();
+      const [detailRes, categoryList] = await Promise.all([
         apiFetch<CategoryDetailResponse>(
           `/spending/categories/${categoryId}?${params.toString()}`,
         ),
         apiFetch<CategoryOption[]>("/spending/categories"),
-        apiFetch<{ transactions: SpendingTransaction[]; nextCursor: string | null }>(
-          `/spending/categories/${categoryId}/transactions?${params.toString()}&limit=50`,
-        ),
       ]);
       setDetail(detailRes);
       setNameValue(detailRes.category.name);
       setIconValue(detailRes.category.icon ?? "");
       setColorValue(detailRes.category.color);
       setCategories(categoryList);
-      setTransactions(txRes.transactions);
-      setNextCursor(txRes.nextCursor);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load category");
     } finally {
       setLoading(false);
     }
-  }, [categoryId, queryBase]);
+  }, [categoryId, metaParams]);
+
+  const loadTransactions = useCallback(async () => {
+    setLoadingTransactions(true);
+    setError(null);
+    try {
+      const params = transactionParams();
+      const txRes = await apiFetch<{
+        transactions: SpendingTransaction[];
+        nextCursor: string | null;
+      }>(
+        `/spending/categories/${categoryId}/transactions?${params.toString()}&limit=50`,
+      );
+      setTransactions(txRes.transactions);
+      setNextCursor(txRes.nextCursor);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load transactions");
+    } finally {
+      setLoadingTransactions(false);
+    }
+  }, [categoryId, transactionParams]);
+
+  const loadData = useCallback(async () => {
+    await Promise.all([loadCategoryMeta(), loadTransactions()]);
+  }, [loadCategoryMeta, loadTransactions]);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    void loadCategoryMeta();
+  }, [loadCategoryMeta]);
+
+  useEffect(() => {
+    void loadTransactions();
+  }, [loadTransactions]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const params = queryBase();
+      const params = transactionParams();
       params.set("cursor", nextCursor);
       params.set("limit", "50");
       const txRes = await apiFetch<{
@@ -278,15 +315,15 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
           </div>
         ) : (
           detail.payees.map((payee) => {
-            const params = new URLSearchParams({ range, payee: payee.payeeLabel });
-            if (bankConnectionId) params.set("bank", bankConnectionId);
-            if (tagIds) params.set("tagIds", tagIds);
             const active = payeeFilter === payee.payeeLabel;
             return (
-              <Link
+              <button
                 key={payee.payeeLabel}
-                href={`/spending/${categoryId}?${params.toString()}`}
+                type="button"
                 className={`payee-row${active ? " active" : ""}`}
+                onClick={() =>
+                  setPayeeFilter(active ? null : payee.payeeLabel)
+                }
               >
                 <div>
                   <p className="payee-name">{payee.payeeLabel}</p>
@@ -297,7 +334,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
                 <p className="spending-category-amount">
                   {formatMoney(payee.totalSpent)}
                 </p>
-              </Link>
+              </button>
             );
           })
         )}
@@ -306,14 +343,20 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
       <div className="section-title-row">
         <h2 className="section-title">
           {payeeFilter ? `${payeeFilter} transactions` : "All transactions"}
+          {loadingTransactions ? (
+            <span className="bank-meta" style={{ marginLeft: "0.5rem" }}>
+              Updating…
+            </span>
+          ) : null}
         </h2>
         {payeeFilter ? (
-          <Link
-            href={`/spending/${categoryId}?range=${range}${bankConnectionId ? `&bank=${bankConnectionId}` : ""}${tagIds ? `&tagIds=${tagIds}` : ""}`}
-            className="bank-meta"
+          <button
+            type="button"
+            className="bank-meta link-button"
+            onClick={() => setPayeeFilter(null)}
           >
             Clear merchant filter
-          </Link>
+          </button>
         ) : null}
       </div>
 
