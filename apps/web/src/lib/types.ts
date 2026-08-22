@@ -35,6 +35,7 @@ export type DashboardTransaction = {
   amount: number;
   currency: string;
   description: string;
+  payeeLabel: string | null;
   merchant: string | null;
   bookedAt: string;
   accountId: string;
@@ -42,6 +43,20 @@ export type DashboardTransaction = {
   accountIban: string | null;
   bankConnectionId: string;
   institutionName: string;
+  isSplit: boolean;
+  category: {
+    id: string;
+    name: string;
+    color: string;
+    icon: string | null;
+  } | null;
+  tags: Array<{ id: string; name: string; color: string }>;
+  splitCategories: Array<{
+    name: string;
+    color: string;
+    icon: string | null;
+  }>;
+  splitTags: Array<{ id: string; name: string; color: string }>;
 };
 
 export type DashboardConnectionSummary = {

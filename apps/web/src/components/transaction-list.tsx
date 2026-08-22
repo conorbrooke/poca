@@ -10,6 +10,107 @@ type TransactionListProps = {
   onLoadMore?: () => void;
 };
 
+function uniqueTags(tags: DashboardTransaction["tags"]) {
+  const seen = new Set<string>();
+  return tags.filter((tag) => {
+    if (seen.has(tag.id)) return false;
+    seen.add(tag.id);
+    return true;
+  });
+}
+
+function CategoryPill({
+  name,
+  color,
+  icon,
+}: {
+  name: string;
+  color: string;
+  icon?: string | null;
+}) {
+  return (
+    <span
+      className="tx-category-pill"
+      style={{
+        borderColor: `${color}55`,
+        background: `${color}18`,
+        color,
+      }}
+    >
+      {icon ? `${icon} ` : ""}
+      {name}
+    </span>
+  );
+}
+
+function TransactionClassification({ tx }: { tx: DashboardTransaction }) {
+  const isExpense = tx.amount < 0;
+
+  if (tx.isSplit && tx.splitCategories.length > 0) {
+    const uniqueCategories = [
+      ...new Map(tx.splitCategories.map((item) => [item.name, item])).values(),
+    ];
+    const tags = uniqueTags(tx.splitTags);
+
+    return (
+      <div className="transaction-classification">
+        <span className="split-badge">Split</span>
+        {uniqueCategories.map((category) => (
+          <CategoryPill key={category.name} {...category} />
+        ))}
+        {tags.length > 0 ? (
+          <div className="transaction-tags inline">
+            {tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="transaction-tag"
+                style={{ borderColor: `${tag.color}44` }}
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (tx.category) {
+    const tags = uniqueTags(tx.tags);
+    return (
+      <div className="transaction-classification">
+        <CategoryPill {...tx.category} />
+        {tags.map((tag) => (
+          <span
+            key={tag.id}
+            className="transaction-tag"
+            style={{ borderColor: `${tag.color}44` }}
+          >
+            {tag.name}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (!isExpense) return null;
+
+  return (
+    <div className="transaction-classification">
+      <span className="tx-category-pill uncategorized">Uncategorized</span>
+      {uniqueTags(tx.tags).map((tag) => (
+        <span
+          key={tag.id}
+          className="transaction-tag"
+          style={{ borderColor: `${tag.color}44` }}
+        >
+          {tag.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function TransactionList({
   transactions,
   emptyMessage = "No transactions yet. Connect a bank and sync to see activity.",
@@ -41,12 +142,18 @@ export function TransactionList({
       <div className="transaction-list">
         {transactions.map((tx) => {
           const isIncome = tx.amount >= 0;
+          const title = tx.payeeLabel ?? tx.description;
+          const showDescription =
+            tx.payeeLabel &&
+            tx.payeeLabel.trim() !== tx.description.trim();
 
           return (
             <article key={tx.id} className="transaction-row">
               <div className="transaction-main">
-                <p className="transaction-title">{tx.description}</p>
-                {tx.merchant && tx.merchant !== tx.description ? (
+                <p className="transaction-title">{title}</p>
+                {showDescription ? (
+                  <p className="transaction-subtitle">{tx.description}</p>
+                ) : tx.merchant && tx.merchant !== title ? (
                   <p className="transaction-subtitle">{tx.merchant}</p>
                 ) : null}
                 <div className="transaction-meta">
@@ -57,6 +164,7 @@ export function TransactionList({
                     <span>···{tx.accountIban.slice(-4)}</span>
                   ) : null}
                 </div>
+                <TransactionClassification tx={tx} />
               </div>
               <p
                 className={`transaction-amount ${isIncome ? "income" : "expense"}`}

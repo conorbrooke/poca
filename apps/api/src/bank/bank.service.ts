@@ -290,6 +290,24 @@ export class BankService {
       take: limit + 1,
       orderBy: [{ bookedAt: "desc" }, { id: "desc" }],
       include: {
+        category: {
+          select: { id: true, name: true, color: true, icon: true },
+        },
+        tags: {
+          include: {
+            tag: { select: { id: true, name: true, color: true } },
+          },
+        },
+        splits: {
+          include: {
+            category: { select: { name: true, color: true, icon: true } },
+            tags: {
+              include: {
+                tag: { select: { id: true, name: true, color: true } },
+              },
+            },
+          },
+        },
         account: {
           include: {
             bankConnection: {
@@ -310,6 +328,7 @@ export class BankService {
         amount: toNumber(tx.amount),
         currency: tx.currency,
         description: tx.description,
+        payeeLabel: tx.payeeLabel,
         merchant: tx.merchant,
         bookedAt: tx.bookedAt.toISOString(),
         accountId: tx.accountId,
@@ -317,6 +336,36 @@ export class BankService {
         accountIban: tx.account.iban,
         bankConnectionId: tx.account.bankConnection?.id ?? "",
         institutionName: tx.account.bankConnection?.institutionName ?? "",
+        isSplit: tx.isSplit,
+        category: tx.category
+          ? {
+              id: tx.category.id,
+              name: tx.category.name,
+              color: tx.category.color,
+              icon: tx.category.icon,
+            }
+          : null,
+        tags: tx.tags.map((row) => ({
+          id: row.tag.id,
+          name: row.tag.name,
+          color: row.tag.color,
+        })),
+        splitCategories: tx.isSplit
+          ? tx.splits.map((split) => ({
+              name: split.category.name,
+              color: split.category.color,
+              icon: split.category.icon,
+            }))
+          : [],
+        splitTags: tx.isSplit
+          ? tx.splits.flatMap((split) =>
+              split.tags.map((row) => ({
+                id: row.tag.id,
+                name: row.tag.name,
+                color: row.tag.color,
+              })),
+            )
+          : [],
       })),
       nextCursor:
         hasMore && last ? encodeCursor(last.bookedAt, last.id) : null,

@@ -1059,12 +1059,44 @@ button {
   margin-top: 0.35rem;
 }
 
+.transaction-tags.inline {
+  display: inline-flex;
+  margin-top: 0;
+}
+
+.transaction-classification {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.tx-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid;
+  line-height: 1.2;
+}
+
+.tx-category-pill.uncategorized {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.1);
+  color: #d97706;
+}
+
 .transaction-tag {
   font-size: 0.75rem;
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
   background: var(--bg-elevated);
   color: var(--muted);
+  border: 1px solid var(--border);
 }
 
 .split-badge {
