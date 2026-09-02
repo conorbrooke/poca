@@ -5,36 +5,36 @@ import { CATEGORY_KIND_OPTIONS, type CategoryKind } from "@poca/shared";
 type CategoryKindFieldsProps = {
   value: CategoryKind;
   onChange: (kind: CategoryKind) => void;
-  name: string;
   disabled?: boolean;
 };
 
 export function CategoryKindFields({
   value,
   onChange,
-  name,
   disabled,
 }: CategoryKindFieldsProps) {
+  const hint =
+    CATEGORY_KIND_OPTIONS.find((option) => option.id === value)?.hint ?? "";
+
   return (
-    <fieldset className="scope-fieldset" disabled={disabled}>
-      <legend className="login-label">Category type</legend>
-      {CATEGORY_KIND_OPTIONS.map((option) => (
-        <label key={option.id} className="radio-label kind-option">
-          <input
-            type="radio"
-            name={name}
-            checked={value === option.id}
-            onChange={() => onChange(option.id)}
+    <div>
+      <p className="login-label">Type</p>
+      <div className="range-tabs">
+        {CATEGORY_KIND_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={`range-tab${value === option.id ? " active" : ""}`}
             disabled={disabled}
-          />
-          <span>
+            onClick={() => onChange(option.id)}
+          >
             {option.label}
-            <span className="bank-meta" style={{ display: "block" }}>
-              {option.hint}
-            </span>
-          </span>
-        </label>
-      ))}
-    </fieldset>
+          </button>
+        ))}
+      </div>
+      <p className="bank-meta" style={{ marginTop: "0.5rem" }}>
+        {hint}
+      </p>
+    </div>
   );
 }

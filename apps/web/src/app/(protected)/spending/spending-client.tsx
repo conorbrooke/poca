@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SPENDING_RANGES } from "@poca/shared";
+import { AddCategoryForm } from "../../../components/add-category-form";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
 import { useSpendingRange } from "../../../lib/spending-range";
@@ -194,6 +195,13 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
           ))
         )}
       </div>
+
+      <AddCategoryForm
+        defaultKind="EXPENSE"
+        onCreated={() => {
+          void loadSummary();
+        }}
+      />
     </div>
   );
 }

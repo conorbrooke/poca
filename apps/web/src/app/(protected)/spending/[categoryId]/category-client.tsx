@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { SPENDING_RANGES, categoryKindLabel, type CategoryKind } from "@poca/shared";
 import { CategoryKindFields } from "../../../../components/category-kind-fields";
 import { SelectableTransactionList } from "../../../../components/selectable-transaction-list";
@@ -21,12 +21,19 @@ type CategoryClientProps = {
 
 export function CategoryClient({ categoryId }: CategoryClientProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [range] = useSpendingRange(searchParams.get("range"));
   const bankConnectionId = searchParams.get("bank") ?? undefined;
   const payeeFilter = searchParams.get("payee") ?? undefined;
   const tagIds = searchParams.get("tagIds") ?? undefined;
-  const flow = searchParams.get("flow") === "in" ? "in" : "out";
+  const isIncomeSection = pathname.startsWith("/income");
+  const flow =
+    searchParams.get("flow") === "in" ||
+    (isIncomeSection && searchParams.get("flow") !== "out")
+      ? "in"
+      : "out";
+  const categoryBase = isIncomeSection ? "/income" : "/spending";
 
   const [detail, setDetail] = useState<CategoryDetailResponse | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -61,7 +68,9 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
     if (bankConnectionId) params.set("bank", bankConnectionId);
     if (tagIds) params.set("tagIds", tagIds);
     if (nextPayee) params.set("payee", nextPayee);
-    router.push(`/spending/${categoryId}?${params.toString()}`, { scroll: false });
+    router.push(`${categoryBase}/${categoryId}?${params.toString()}`, {
+      scroll: false,
+    });
   }
 
   const loadCategoryMeta = useCallback(async () => {
@@ -176,7 +185,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
         method: "DELETE",
       });
       router.push(
-        `/spending?${new URLSearchParams({
+        `${categoryBase}?${new URLSearchParams({
           range,
           ...(bankConnectionId ? { bank: bankConnectionId } : {}),
         }).toString()}`,
@@ -209,10 +218,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
 
   const backParams = new URLSearchParams({ range });
   if (bankConnectionId) backParams.set("bank", bankConnectionId);
-  const backHref =
-    flow === "in"
-      ? `/income?${backParams.toString()}`
-      : `/spending?${backParams.toString()}`;
+  const backHref = `${categoryBase}?${backParams.toString()}`;
 
   const isSystemCategory = detail.category.isSystem;
 
@@ -223,7 +229,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
       {error ? <div className="alert alert-error">{error}</div> : null}
 
       <Link href={backHref} className="back-link">
-        {flow === "in" ? "← Back to income" : "← Back to spending"}
+        {isIncomeSection ? "← Back to income" : "← Back to spending"}
       </Link>
 
       <div
@@ -298,7 +304,6 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
             </div>
           </label>
           <CategoryKindFields
-            name="category-kind"
             value={kindValue}
             onChange={setKindValue}
             disabled={isSystemCategory}

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { SPENDING_RANGES, type CategoryKind } from "@poca/shared";
-import { CategoryKindFields } from "../../../components/category-kind-fields";
+import { SPENDING_RANGES } from "@poca/shared";
+import { AddCategoryForm } from "../../../components/add-category-form";
 import { SelectableTransactionList } from "../../../components/selectable-transaction-list";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
@@ -27,10 +27,6 @@ export function IncomeClient() {
   const [loadingTransactions, setLoadingTransactions] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryIcon, setNewCategoryIcon] = useState("");
-  const [newCategoryKind, setNewCategoryKind] = useState<CategoryKind>("INCOME");
-  const [creatingCategory, setCreatingCategory] = useState(false);
 
   const bankConnectionId = searchParams.get("bank") ?? undefined;
 
@@ -116,32 +112,6 @@ export function IncomeClient() {
     await Promise.all([loadSummary(), loadTransactions()]);
   }
 
-  async function handleCreateCategory() {
-    const name = newCategoryName.trim();
-    if (!name) return;
-    setCreatingCategory(true);
-    setError(null);
-    try {
-      await apiFetch<CategoryOption>("/spending/categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          kind: newCategoryKind,
-          ...(newCategoryIcon.trim() ? { icon: newCategoryIcon.trim() } : {}),
-        }),
-      });
-      setNewCategoryName("");
-      setNewCategoryIcon("");
-      setNewCategoryKind("INCOME");
-      await loadSummary();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create category");
-    } finally {
-      setCreatingCategory(false);
-    }
-  }
-
   if (loading && !data) {
     return (
       <div className="empty-state">
@@ -177,7 +147,7 @@ export function IncomeClient() {
   const categoryHref = (categoryId: string) => {
     const params = new URLSearchParams({ range, flow: "in" });
     if (bankConnectionId) params.set("bank", bankConnectionId);
-    return `/spending/${categoryId}?${params.toString()}`;
+    return `/income/${categoryId}?${params.toString()}`;
   };
 
   return (
@@ -276,51 +246,12 @@ export function IncomeClient() {
         )}
       </div>
 
-      <form
-        className="card"
-        style={{ marginTop: "1rem", marginBottom: "1.5rem" }}
-        onSubmit={(event) => {
-          event.preventDefault();
-          void handleCreateCategory();
+      <AddCategoryForm
+        defaultKind="INCOME"
+        onCreated={() => {
+          void loadSummary();
         }}
-      >
-        <h2 className="section-title">Add a category</h2>
-        <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
-          Sales, dividends, stock interest — anything earned gets type Income.
-          Money moving between accounts is Transfer.
-        </p>
-        <label className="login-label">
-          Name
-          <input
-            className="login-input"
-            value={newCategoryName}
-            onChange={(event) => setNewCategoryName(event.target.value)}
-            placeholder="e.g. Sales or Dividends"
-          />
-        </label>
-        <label className="login-label">
-          Icon (optional)
-          <input
-            className="login-input"
-            value={newCategoryIcon}
-            onChange={(event) => setNewCategoryIcon(event.target.value)}
-            placeholder="🏷️"
-          />
-        </label>
-        <CategoryKindFields
-          name="income-new-category-kind"
-          value={newCategoryKind}
-          onChange={setNewCategoryKind}
-        />
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={creatingCategory || !newCategoryName.trim()}
-          style={{ marginTop: "0.75rem" }}
-        >
-          {creatingCategory ? "Adding…" : "Add category"}
-        </button>
-      </form>
+      />
 
       <div className="section-title-row" style={{ marginTop: "2rem" }}>
         <h2 className="section-title">

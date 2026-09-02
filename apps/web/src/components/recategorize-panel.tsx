@@ -532,7 +532,6 @@ export function RecategorizePanel({
                       />
                     </label>
                     <CategoryKindFields
-                      name="new-category-kind"
                       value={newCategoryKind}
                       onChange={setNewCategoryKind}
                     />
