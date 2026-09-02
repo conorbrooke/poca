@@ -15,10 +15,18 @@ export const completeBankLinkSchema = z.object({
 
 export type CompleteBankLinkInput = z.infer<typeof completeBankLinkSchema>;
 
+export const resumeBankLinkSchema = z.object({
+  redirectUrl: z.string().url(),
+});
+
+export type ResumeBankLinkInput = z.infer<typeof resumeBankLinkSchema>;
+
 export const SYNC_DEFAULT_DAYS = 14;
 export const SYNC_MAX_DAYS = 365;
 
 export const SYNC_RANGE_OPTIONS = [
+  { label: "Today", days: 0 },
+  { label: "Last 2 days", days: 2 },
   { label: "Last 2 weeks", days: 14 },
   { label: "Last month", days: 30 },
   { label: "Last 3 months", days: 90 },
@@ -31,7 +39,7 @@ export const syncTransactionsSchema = z.object({
   daysBack: z.coerce
     .number()
     .int()
-    .min(1)
+    .min(0)
     .max(SYNC_MAX_DAYS)
     .default(SYNC_DEFAULT_DAYS),
 });
@@ -87,3 +95,4 @@ export const IRISH_BANK_NAMES = [
 ] as const;
 
 export * from "./spending.js";
+export * from "./transfers.js";

@@ -24,6 +24,8 @@ import {
   spendingQuerySchema,
   spendingTransactionsQuerySchema,
   unsplitTransactionSchema,
+  linkTransferSchema,
+  transfersQuerySchema,
   updateCategorySchema,
   updateSplitSchema,
   updateTagSchema,
@@ -33,6 +35,7 @@ import { CategoriesService } from "./categories.service";
 import { ReceiptsService } from "./receipts.service";
 import { SpendingService } from "./spending.service";
 import { TagsService } from "./tags.service";
+import { TransfersService } from "./transfers.service";
 
 @Controller("spending")
 export class SpendingController {
@@ -41,6 +44,7 @@ export class SpendingController {
     private readonly categoriesService: CategoriesService,
     private readonly tagsService: TagsService,
     private readonly receiptsService: ReceiptsService,
+    private readonly transfersService: TransfersService,
   ) {}
 
   private demoUserId() {
@@ -129,6 +133,32 @@ export class SpendingController {
   async deleteTag(@Param("id") tagId: string) {
     const userId = await this.demoUserId();
     return this.tagsService.deleteTag(userId, tagId);
+  }
+
+  @Get("transfers")
+  async getTransfers(@Query() query: unknown) {
+    const input = parseOrThrow(transfersQuerySchema, query, "Transfers query");
+    const userId = await this.demoUserId();
+    return this.transfersService.getSummary(userId, input);
+  }
+
+  @Post("transfers/link")
+  async linkTransfer(@Body() body: unknown) {
+    const input = parseOrThrow(linkTransferSchema, body, "Link transfer body");
+    const userId = await this.demoUserId();
+    return this.transfersService.linkTransfer(userId, input);
+  }
+
+  @Post("transfers/:id/confirm")
+  async confirmTransfer(@Param("id") transferId: string) {
+    const userId = await this.demoUserId();
+    return this.transfersService.confirmTransfer(userId, transferId);
+  }
+
+  @Delete("transfers/:id")
+  async unlinkTransfer(@Param("id") transferId: string) {
+    const userId = await this.demoUserId();
+    return this.transfersService.unlinkTransfer(userId, transferId);
   }
 
   @Get("categories/:id")

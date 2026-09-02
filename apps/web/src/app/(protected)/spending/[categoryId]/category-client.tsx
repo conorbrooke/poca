@@ -208,6 +208,8 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
 
   const isSystemCategory = detail.category.isSystem;
 
+  const isTransferCategory = detail?.category.kind === "TRANSFER";
+
   return (
     <div>
       {error ? <div className="alert alert-error">{error}</div> : null}
@@ -228,11 +230,15 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
             {iconValue || detail.category.icon || "•"}
           </span>
           <div>
+            {isTransferCategory ? (
+              <p className="page-eyebrow">Between your accounts</p>
+            ) : null}
             <h2 className="spending-total">{nameValue || detail.category.name}</h2>
             <p className="bank-meta">
               {formatMoney(detail.totalSpent)} · {detail.transactionCount}{" "}
-              transactions ·{" "}
+              {isTransferCategory ? "movements" : "transactions"} ·{" "}
               {SPENDING_RANGES.find((r) => r.id === range)?.label ?? range}
+              {isTransferCategory ? " · excluded from spending" : ""}
             </p>
           </div>
         </div>

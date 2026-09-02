@@ -3,6 +3,10 @@ export {
   EnableBankingProvider,
 } from "./enable-banking.js";
 export {
+  buildFallbackExternalId,
+  isLegacySyntheticExternalId,
+} from "./transaction-id.js";
+export {
   encodeInstitutionId,
   parseInstitutionId,
 } from "./types.js";

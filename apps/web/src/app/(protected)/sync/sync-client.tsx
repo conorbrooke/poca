@@ -46,6 +46,8 @@ export function SyncClient() {
   const [loading, setLoading] = useState(true);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [resumingId, setResumingId] = useState<string | null>(null);
   const [syncDaysByConnection, setSyncDaysByConnection] = useState<
     Record<string, number>
   >({});
@@ -88,9 +90,62 @@ export function SyncClient() {
 
   const availableInstitutions = useMemo(
     () =>
-      institutions.filter((inst) => !connectionByInstitution.has(inst.id)),
+      institutions.filter((inst) => {
+        const connection = connectionByInstitution.get(inst.id);
+        return !connection || connection.status !== "LINKED";
+      }),
     [institutions, connectionByInstitution],
   );
+
+  function redirectUrl() {
+    return `${window.location.origin}/bank/callback`;
+  }
+
+  async function resumeConnection(connection: BankConnection) {
+    setResumingId(connection.id);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const result = await apiFetch<LinkResponse>(
+        `/bank/connections/${connection.id}/resume`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ redirectUrl: redirectUrl() }),
+        },
+      );
+      window.location.href = result.link;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resume bank link");
+      setResumingId(null);
+    }
+  }
+
+  async function removeConnection(connection: BankConnection) {
+    const label =
+      connection.status === "PENDING"
+        ? `Remove the unfinished ${connection.institutionName} connection?`
+        : `Disconnect ${connection.institutionName}? Synced accounts and transactions for this bank will be removed from Póca.`;
+
+    if (!window.confirm(label)) return;
+
+    setRemovingId(connection.id);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await apiFetch(`/bank/connections/${connection.id}`, {
+        method: "DELETE",
+      });
+      setMessage(`${connection.institutionName} removed.`);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove bank");
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   async function connectBank(institution: Institution) {
     setConnectingId(institution.id);
@@ -165,6 +220,11 @@ export function SyncClient() {
           <div className="bank-grid">
             {linkedInstitutions.map((institution) => {
               const connection = connectionByInstitution.get(institution.id)!;
+              const isPending = connection.status === "PENDING";
+              const isBusy =
+                syncingId === connection.id ||
+                removingId === connection.id ||
+                resumingId === connection.id;
               const balance = connection.accounts.reduce(
                 (sum, account) => sum + account.currentBalance,
                 0,
@@ -203,7 +263,43 @@ export function SyncClient() {
                     </p>
                   ) : null}
 
+                  {isPending ? (
+                    <div className="alert alert-warning" style={{ margin: 0 }}>
+                      Authorisation was started but not finished. Continue setup
+                      with {connection.institutionName}, or remove this connection
+                      and try again.
+                    </div>
+                  ) : null}
+
                   <div className="bank-card-actions">
+                    {isPending ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={isBusy}
+                          onClick={() => void resumeConnection(connection)}
+                        >
+                          {resumingId === connection.id ? (
+                            <>
+                              <span className="loading-spinner" />
+                              Redirecting…
+                            </>
+                          ) : (
+                            "Continue authorisation"
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={isBusy}
+                          onClick={() => void removeConnection(connection)}
+                        >
+                          {removingId === connection.id ? "Removing…" : "Remove"}
+                        </button>
+                      </>
+                    ) : (
+                      <>
                     <label className="sync-range-select">
                       <span className="sr-only">Sync date range</span>
                       <select
@@ -247,6 +343,16 @@ export function SyncClient() {
                     >
                       View dashboard
                     </Link>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={isBusy}
+                      onClick={() => void removeConnection(connection)}
+                    >
+                      {removingId === connection.id ? "Removing…" : "Disconnect"}
+                    </button>
+                      </>
+                    )}
                   </div>
                 </div>
               );

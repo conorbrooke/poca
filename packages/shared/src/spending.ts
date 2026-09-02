@@ -1,4 +1,7 @@
 import { z } from "zod";
+import type { CategoryKind, TransactionTransferInfo } from "./transfers";
+
+export type { CategoryKind, TransactionTransferInfo } from "./transfers";
 
 export const SPENDING_RANGES = [
   { id: "week", label: "This week", days: 7 },
@@ -149,6 +152,7 @@ export type SpendingCategorySummary = {
   color: string;
   icon: string | null;
   isSystem: boolean;
+  kind: CategoryKind;
   totalSpent: number;
   transactionCount: number;
   share: number;
@@ -199,12 +203,15 @@ export type SpendingTransaction = {
   bookedAt: string;
   categoryId: string | null;
   categoryName: string | null;
+  categoryKind: CategoryKind | null;
   institutionName: string;
+  accountName: string;
   externalId: string | null;
   isSplit: boolean;
   splitOutOfBalance: boolean;
   tags: TagOption[];
   receiptCount: number;
+  transfer: TransactionTransferInfo | null;
 };
 
 export type TransactionDetail = SpendingTransaction & {
@@ -217,8 +224,11 @@ export type SpendingSummaryResponse = {
   periodStart: string;
   periodEnd: string;
   totalSpent: number;
+  totalTransferred: number;
+  transferTransactionCount: number;
   transactionCount: number;
   categories: SpendingCategorySummary[];
+  transfersCategory: SpendingCategorySummary | null;
   cached: boolean;
 };
 
@@ -229,6 +239,7 @@ export type CategoryDetailResponse = {
     color: string;
     icon: string | null;
     isSystem: boolean;
+    kind: CategoryKind;
   };
   range: SpendingRangeId;
   periodStart: string;
@@ -250,21 +261,21 @@ export type TagSummaryResponse = {
 };
 
 export const DEFAULT_CATEGORY_DEFINITIONS = [
-  { name: "Restaurants", color: "#f97316", icon: "🍽️" },
-  { name: "Groceries", color: "#22c55e", icon: "🛒" },
-  { name: "Fuel", color: "#64748b", icon: "⛽" },
-  { name: "Transport", color: "#3b82f6", icon: "🚌" },
-  { name: "Travel", color: "#0ea5e9", icon: "✈️" },
-  { name: "Entertainment", color: "#ec4899", icon: "🎬" },
-  { name: "Shopping", color: "#8b5cf6", icon: "🛍️" },
-  { name: "Subscriptions", color: "#6366f1", icon: "📱" },
-  { name: "Health & Fitness", color: "#14b8a6", icon: "💪" },
-  { name: "Insurance", color: "#78716c", icon: "🛡️" },
-  { name: "Utilities", color: "#eab308", icon: "💡" },
-  { name: "Education", color: "#0891b2", icon: "📚" },
-  { name: "Transfers", color: "#475569", icon: "↔️" },
-  { name: "ATM", color: "#334155", icon: "🏧" },
-  { name: "Bank Fees", color: "#94a3b8", icon: "🏦" },
-  { name: "Income", color: "#3dd68c", icon: "💰" },
-  { name: "Other", color: "#71717a", icon: "📦", isSystem: true },
+  { name: "Restaurants", color: "#f97316", icon: "🍽️", kind: "EXPENSE" as const },
+  { name: "Groceries", color: "#22c55e", icon: "🛒", kind: "EXPENSE" as const },
+  { name: "Fuel", color: "#64748b", icon: "⛽", kind: "EXPENSE" as const },
+  { name: "Transport", color: "#3b82f6", icon: "🚌", kind: "EXPENSE" as const },
+  { name: "Travel", color: "#0ea5e9", icon: "✈️", kind: "EXPENSE" as const },
+  { name: "Entertainment", color: "#ec4899", icon: "🎬", kind: "EXPENSE" as const },
+  { name: "Shopping", color: "#8b5cf6", icon: "🛍️", kind: "EXPENSE" as const },
+  { name: "Subscriptions", color: "#6366f1", icon: "📱", kind: "EXPENSE" as const },
+  { name: "Health & Fitness", color: "#14b8a6", icon: "💪", kind: "EXPENSE" as const },
+  { name: "Insurance", color: "#78716c", icon: "🛡️", kind: "EXPENSE" as const },
+  { name: "Utilities", color: "#eab308", icon: "💡", kind: "EXPENSE" as const },
+  { name: "Education", color: "#0891b2", icon: "📚", kind: "EXPENSE" as const },
+  { name: "Transfers", color: "#475569", icon: "↔️", kind: "TRANSFER" as const },
+  { name: "ATM", color: "#334155", icon: "🏧", kind: "EXPENSE" as const },
+  { name: "Bank Fees", color: "#94a3b8", icon: "🏦", kind: "EXPENSE" as const },
+  { name: "Income", color: "#3dd68c", icon: "💰", kind: "INCOME" as const },
+  { name: "Other", color: "#71717a", icon: "📦", isSystem: true, kind: "EXPENSE" as const },
 ] as const;

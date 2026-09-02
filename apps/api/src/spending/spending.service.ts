@@ -15,11 +15,13 @@ import type {
   UnsplitTransactionInput,
   UpdateSplitInput,
 } from "@poca/shared";
+import { isSpendingCategoryKind } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
 import { CategoriesService } from "./categories.service";
 import { mapTag, splitsOutOfBalance, toNumber } from "./mappers";
 import { resolveSpendingPeriod, roundMoney, toDateOnly } from "./period";
+import { TransfersService } from "./transfers.service";
 
 const tagInclude = {
   tag: { select: { id: true, name: true, color: true, icon: true } },
@@ -30,6 +32,7 @@ export class SpendingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly categoriesService: CategoriesService,
+    private readonly transfersService: TransfersService,
   ) {}
 
   async getSummary(
@@ -55,35 +58,17 @@ export class SpendingService {
       });
 
       if (cached.length > 0) {
-        const totalSpent = roundMoney(
-          cached.reduce((sum, row) => sum + toNumber(row.totalSpent), 0),
-        );
-        const transactionCount = cached.reduce(
-          (sum, row) => sum + row.transactionCount,
-          0,
-        );
-
-        return {
-          range: query.range,
-          periodStart: periodStart.toISOString(),
-          periodEnd: periodEnd.toISOString(),
-          totalSpent,
-          transactionCount,
-          cached: true,
-          categories: cached.map((row) => ({
-            id: row.categoryId,
-            name: row.category.name,
-            color: row.category.color,
-            icon: row.category.icon,
-            isSystem: row.category.isSystem,
+        return this.buildSummaryFromRows(
+          query.range,
+          periodStart,
+          periodEnd,
+          cached.map((row) => ({
+            category: row.category,
             totalSpent: toNumber(row.totalSpent),
             transactionCount: row.transactionCount,
-            share:
-              totalSpent > 0
-                ? roundMoney((toNumber(row.totalSpent) / totalSpent) * 100)
-                : 0,
           })),
-        };
+          true,
+        );
       }
     }
 
@@ -106,7 +91,11 @@ export class SpendingService {
     if (!category) throw new NotFoundException("Category not found");
 
     const summary = await this.getSummary(userId, query);
-    const categorySummary = summary.categories.find((item) => item.id === categoryId);
+    const categorySummary =
+      summary.categories.find((item) => item.id === categoryId) ??
+      (summary.transfersCategory?.id === categoryId
+        ? summary.transfersCategory
+        : undefined);
     const { periodStart, periodEnd } = resolveSpendingPeriod(query.range);
     const bankConnectionId = query.bankConnectionId ?? null;
 
@@ -157,6 +146,7 @@ export class SpendingService {
         color: category.color,
         icon: category.icon,
         isSystem: category.isSystem,
+        kind: category.kind,
       },
       range: query.range,
       periodStart: periodStart.toISOString(),
@@ -203,7 +193,10 @@ export class SpendingService {
         tags: { include: tagInclude },
         receipts: { select: { id: true } },
         account: {
-          include: { bankConnection: { select: { institutionName: true } } },
+          select: {
+            name: true,
+            bankConnection: { select: { institutionName: true } },
+          },
         },
       },
     });
@@ -228,7 +221,8 @@ export class SpendingService {
             receipts: { select: { id: true } },
             splits: { select: { amount: true } },
             account: {
-              include: {
+              select: {
+                name: true,
                 bankConnection: { select: { institutionName: true } },
               },
             },
@@ -264,8 +258,16 @@ export class SpendingService {
     const last = page.at(-1);
     const hasMore = afterCursor.length > query.limit;
 
+    const transferInfo = await this.transfersService.loadTransferInfoByTransactionIds(
+      userId,
+      page.map((item) => item.transactionId),
+    );
+
     return {
-      transactions: page,
+      transactions: page.map((item) => ({
+        ...item,
+        transfer: transferInfo.get(item.transactionId) ?? null,
+      })),
       nextCursor:
         hasMore && last
           ? Buffer.from(
@@ -300,8 +302,13 @@ export class SpendingService {
     if (!tx) throw new NotFoundException("Transaction not found");
 
     const base = this.mapUnsplit(tx);
+    const transferInfo = await this.transfersService.loadTransferInfoByTransactionIds(
+      userId,
+      [tx.id],
+    );
     return {
       ...base,
+      transfer: transferInfo.get(tx.id) ?? null,
       receipts: tx.receipts.map((receipt) => ({
         id: receipt.id,
         originalName: receipt.originalName,
@@ -438,11 +445,6 @@ export class SpendingService {
     tagIds?: string[],
   ): Promise<SpendingSummaryResponse> {
     const { periodStart, periodEnd } = resolveSpendingPeriod(range);
-    const accountFilter: Prisma.AccountWhereInput = {
-      userId,
-      ...(bankConnectionId ? { bankConnectionId } : {}),
-    };
-    const tagFilter = this.tagAndFilter(tagIds);
     const persistCache = !tagIds?.length;
 
     if (persistCache) {
@@ -456,6 +458,66 @@ export class SpendingService {
         },
       });
     }
+
+    const allGrouped = await this.groupCategoryTotals(
+      userId,
+      range,
+      bankConnectionId,
+      tagIds,
+      periodStart,
+      periodEnd,
+    );
+
+    if (persistCache) {
+      for (const row of allGrouped) {
+        await this.prisma.categoryPeriodStat.create({
+          data: {
+            userId,
+            categoryId: row.category.id,
+            bankConnectionId,
+            rangeType: range,
+            periodStart: toDateOnly(periodStart),
+            periodEnd: toDateOnly(periodEnd),
+            totalSpent: row.totalSpent,
+            transactionCount: row.transactionCount,
+            payees: {
+              create: row.payees.map((payee) => ({
+                payeeLabel: payee.payeeLabel,
+                totalSpent: payee.totalSpent,
+                transactionCount: payee.transactionCount,
+              })),
+            },
+          },
+        });
+      }
+    }
+
+    return this.buildSummaryFromRows(
+      range,
+      periodStart,
+      periodEnd,
+      allGrouped.map((row) => ({
+        category: row.category,
+        totalSpent: row.totalSpent,
+        transactionCount: row.transactionCount,
+      })),
+      false,
+    );
+  }
+
+  private async groupCategoryTotals(
+    userId: string,
+    range: SpendingRangeId,
+    bankConnectionId: string | null,
+    tagIds: string[] | undefined,
+    periodStart: Date,
+    periodEnd: Date,
+  ) {
+    const accountFilter: Prisma.AccountWhereInput = {
+      userId,
+      ...(bankConnectionId ? { bankConnectionId } : {}),
+    };
+    const tagFilter = this.tagAndFilter(tagIds);
 
     const unsplit = await this.prisma.transaction.findMany({
       where: {
@@ -486,7 +548,11 @@ export class SpendingService {
     const categoryMap = new Map(categories.map((category) => [category.id, category]));
     const grouped = new Map<
       string,
-      { totalSpent: number; transactionCount: number; payees: Map<string, { totalSpent: number; transactionCount: number }> }
+      {
+        totalSpent: number;
+        transactionCount: number;
+        payees: Map<string, { totalSpent: number; transactionCount: number }>;
+      }
     >();
 
     for (const row of [...unsplit, ...splits]) {
@@ -510,7 +576,7 @@ export class SpendingService {
       grouped.set(row.categoryId, current);
     }
 
-    const rows = [...grouped.entries()]
+    return [...grouped.entries()]
       .map(([id, stats]) => {
         const category = categoryMap.get(id);
         if (!category) return null;
@@ -535,53 +601,99 @@ export class SpendingService {
         transactionCount: number;
       }>;
     }>;
+  }
 
-    rows.sort((a, b) => b.totalSpent - a.totalSpent);
-    const totalSpent = roundMoney(rows.reduce((sum, row) => sum + row.totalSpent, 0));
-    const transactionCount = rows.reduce((sum, row) => sum + row.transactionCount, 0);
+  private buildSummaryFromRows(
+    range: SpendingRangeId,
+    periodStart: Date,
+    periodEnd: Date,
+    rows: Array<{
+      category: {
+        id: string;
+        name: string;
+        color: string;
+        icon: string | null;
+        isSystem: boolean;
+        kind: import("@poca/db").CategoryKind;
+      };
+      totalSpent: number;
+      transactionCount: number;
+    }>,
+    cached: boolean,
+  ): SpendingSummaryResponse {
+    const expenseRows = rows.filter((row) =>
+      isSpendingCategoryKind(row.category.kind),
+    );
+    const transferRows = rows.filter((row) => row.category.kind === "TRANSFER");
 
-    if (persistCache) {
-      for (const row of rows) {
-        await this.prisma.categoryPeriodStat.create({
-          data: {
-            userId,
-            categoryId: row.category.id,
-            bankConnectionId,
-            rangeType: range,
-            periodStart: toDateOnly(periodStart),
-            periodEnd: toDateOnly(periodEnd),
-            totalSpent: row.totalSpent,
-            transactionCount: row.transactionCount,
-            payees: {
-              create: row.payees.map((payee) => ({
-                payeeLabel: payee.payeeLabel,
-                totalSpent: payee.totalSpent,
-                transactionCount: payee.transactionCount,
-              })),
-            },
-          },
-        });
-      }
-    }
+    const totalSpent = roundMoney(
+      expenseRows.reduce((sum, row) => sum + row.totalSpent, 0),
+    );
+    const totalTransferred = roundMoney(
+      transferRows.reduce((sum, row) => sum + row.totalSpent, 0),
+    );
+    const transactionCount = expenseRows.reduce(
+      (sum, row) => sum + row.transactionCount,
+      0,
+    );
+    const transferTransactionCount = transferRows.reduce(
+      (sum, row) => sum + row.transactionCount,
+      0,
+    );
+
+    const transfersCategory =
+      transferRows.length === 1
+        ? {
+            id: transferRows[0]!.category.id,
+            name: transferRows[0]!.category.name,
+            color: transferRows[0]!.category.color,
+            icon: transferRows[0]!.category.icon,
+            isSystem: transferRows[0]!.category.isSystem,
+            kind: transferRows[0]!.category.kind,
+            totalSpent: transferRows[0]!.totalSpent,
+            transactionCount: transferRows[0]!.transactionCount,
+            share: 0,
+          }
+        : transferRows.length > 1
+          ? {
+              id: transferRows[0]!.category.id,
+              name: "Transfers",
+              color: transferRows[0]!.category.color,
+              icon: transferRows[0]!.category.icon,
+              isSystem: transferRows[0]!.category.isSystem,
+              kind: "TRANSFER" as const,
+              totalSpent: totalTransferred,
+              transactionCount: transferTransactionCount,
+              share: 0,
+            }
+          : null;
 
     return {
       range,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
       totalSpent,
+      totalTransferred,
+      transferTransactionCount,
       transactionCount,
-      cached: false,
-      categories: rows.map((row) => ({
-        id: row.category.id,
-        name: row.category.name,
-        color: row.category.color,
-        icon: row.category.icon,
-        isSystem: row.category.isSystem,
-        totalSpent: row.totalSpent,
-        transactionCount: row.transactionCount,
-        share:
-          totalSpent > 0 ? roundMoney((row.totalSpent / totalSpent) * 100) : 0,
-      })),
+      cached,
+      transfersCategory,
+      categories: expenseRows
+        .sort((a, b) => b.totalSpent - a.totalSpent)
+        .map((row) => ({
+          id: row.category.id,
+          name: row.category.name,
+          color: row.category.color,
+          icon: row.category.icon,
+          isSystem: row.category.isSystem,
+          kind: row.category.kind,
+          totalSpent: row.totalSpent,
+          transactionCount: row.transactionCount,
+          share:
+            totalSpent > 0
+              ? roundMoney((row.totalSpent / totalSpent) * 100)
+              : 0,
+        })),
     };
   }
 
@@ -663,11 +775,14 @@ export class SpendingService {
     categoryId: string | null;
     externalId: string | null;
     isSplit: boolean;
-    category: { name: string } | null;
+    category: { name: string; kind?: import("@poca/db").CategoryKind } | null;
     tags: Array<{ tag: { id: string; name: string; color: string; icon: string | null } }>;
     receipts: Array<{ id: string }>;
     splits?: Array<{ amount: { toString(): string } }>;
-    account: { bankConnection: { institutionName: string } | null };
+    account: {
+      name: string;
+      bankConnection: { institutionName: string } | null;
+    };
   }): SpendingTransaction {
     const splitAmounts = (tx.splits ?? []).map((split) => toNumber(split.amount));
     return {
@@ -683,13 +798,16 @@ export class SpendingService {
       bookedAt: tx.bookedAt.toISOString(),
       categoryId: tx.categoryId,
       categoryName: tx.category?.name ?? null,
+      categoryKind: tx.category?.kind ?? null,
       institutionName: tx.account.bankConnection?.institutionName ?? "",
+      accountName: tx.account.name,
       externalId: tx.externalId,
       isSplit: tx.isSplit,
       splitOutOfBalance:
         tx.isSplit && splitsOutOfBalance(toNumber(tx.amount), splitAmounts),
       tags: tx.tags.map((row) => mapTag(row.tag)),
       receiptCount: tx.receipts.length,
+      transfer: null,
     };
   }
 
@@ -699,7 +817,7 @@ export class SpendingService {
     payeeLabel: string;
     description: string | null;
     categoryId: string;
-    category: { name: string };
+    category: { name: string; kind?: import("@poca/db").CategoryKind };
     tags: Array<{ tag: { id: string; name: string; color: string; icon: string | null } }>;
     transaction: {
       id: string;
@@ -713,7 +831,10 @@ export class SpendingService {
       amount: { toString(): string };
       receipts: Array<{ id: string }>;
       splits: Array<{ amount: { toString(): string } }>;
-      account: { bankConnection: { institutionName: string } | null };
+      account: {
+        name: string;
+        bankConnection: { institutionName: string } | null;
+      };
     };
   }): SpendingTransaction {
     const splitAmounts = split.transaction.splits.map((item) => toNumber(item.amount));
@@ -730,8 +851,10 @@ export class SpendingService {
       bookedAt: split.transaction.bookedAt.toISOString(),
       categoryId: split.categoryId,
       categoryName: split.category.name,
+      categoryKind: split.category.kind ?? null,
       institutionName:
         split.transaction.account.bankConnection?.institutionName ?? "",
+      accountName: split.transaction.account.name,
       externalId: split.transaction.externalId,
       isSplit: true,
       splitOutOfBalance: splitsOutOfBalance(
@@ -740,6 +863,7 @@ export class SpendingService {
       ),
       tags: split.tags.map((row) => mapTag(row.tag)),
       receiptCount: split.transaction.receipts.length,
+      transfer: null,
     };
   }
 }

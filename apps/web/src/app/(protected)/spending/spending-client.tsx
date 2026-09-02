@@ -99,7 +99,7 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
               {formatMoney(data?.totalSpent ?? 0)}
             </h2>
             <p className="bank-meta">
-              {data?.transactionCount ?? 0} transactions ·{" "}
+              {data?.transactionCount ?? 0} expense transactions ·{" "}
               {SPENDING_RANGES.find((r) => r.id === range)?.label ?? range}
             </p>
           </div>
@@ -155,6 +155,17 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
         </div>
       ) : null}
 
+      {data?.transfersCategory && data.totalTransferred > 0 ? (
+        <MovementsCard
+          category={data.transfersCategory}
+          totalTransferred={data.totalTransferred}
+          transferTransactionCount={data.transferTransactionCount}
+          range={range}
+          bankConnectionId={bankConnectionId}
+          tagIds={selectedTagIds}
+        />
+      ) : null}
+
       {otherCategory && otherCategory.totalSpent > 0 ? (
         <div className="alert alert-warning spending-other-banner">
           <strong>{formatMoney(otherCategory.totalSpent)}</strong> in{" "}
@@ -184,6 +195,43 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
         )}
       </div>
     </div>
+  );
+}
+
+function MovementsCard({
+  category,
+  totalTransferred,
+  transferTransactionCount,
+  range,
+  bankConnectionId,
+  tagIds,
+}: {
+  category: SpendingCategorySummary;
+  totalTransferred: number;
+  transferTransactionCount: number;
+  range: string;
+  bankConnectionId?: string;
+  tagIds: string[];
+}) {
+  const params = new URLSearchParams({ range });
+  if (bankConnectionId) params.set("bank", bankConnectionId);
+  if (tagIds.length > 0) params.set("tagIds", tagIds.join(","));
+
+  return (
+    <Link
+      href={`/spending/${category.id}?${params.toString()}`}
+      className="spending-movements-card card"
+    >
+      <div className="spending-movements-copy">
+        <p className="page-eyebrow">Between your accounts</p>
+        <h3 className="spending-movements-total">{formatMoney(totalTransferred)}</h3>
+        <p className="bank-meta">
+          {transferTransactionCount} movement
+          {transferTransactionCount === 1 ? "" : "s"} · excluded from spending
+        </p>
+      </div>
+      <span className="spending-movements-icon">{category.icon ?? "↔️"}</span>
+    </Link>
   );
 }
 

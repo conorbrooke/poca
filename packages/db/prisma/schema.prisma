@@ -29,6 +29,17 @@ enum SyncJobStatus {
   FAILED
 }
 
+enum CategoryKind {
+  EXPENSE
+  INCOME
+  TRANSFER
+}
+
+enum TransferLinkStatus {
+  SUGGESTED
+  CONFIRMED
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -43,6 +54,7 @@ model User {
   categoryPeriodStats CategoryPeriodStat[]
   tags             Tag[]
   syncJobs         SyncJob[]
+  accountTransfers AccountTransfer[]
 
   @@index([email])
 }
@@ -113,14 +125,15 @@ model Account {
 }
 
 model Category {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   userId    String
   name      String
-  color     String   @default("#6366f1")
+  color     String       @default("#6366f1")
   icon      String?
-  isSystem  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  kind      CategoryKind @default(EXPENSE)
+  isSystem  Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
@@ -237,8 +250,10 @@ model Transaction {
   account  Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
   category Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   tags     TransactionTag[]
-  splits   TransactionSplit[]
-  receipts TransactionReceipt[]
+  splits              TransactionSplit[]
+  receipts            TransactionReceipt[]
+  transferOut         AccountTransfer? @relation("TransferOut")
+  transferIn          AccountTransfer? @relation("TransferIn")
 
   @@unique([accountId, externalId])
   @@index([accountId])
@@ -301,6 +316,22 @@ model TransactionReceipt {
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 
   @@index([transactionId])
+}
+
+model AccountTransfer {
+  id               String             @id @default(cuid())
+  userId           String
+  outTransactionId String             @unique
+  inTransactionId  String?            @unique
+  status           TransferLinkStatus @default(SUGGESTED)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outTransaction Transaction  @relation("TransferOut", fields: [outTransactionId], references: [id], onDelete: Cascade)
+  inTransaction  Transaction? @relation("TransferIn", fields: [inTransactionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 model SyncJob {

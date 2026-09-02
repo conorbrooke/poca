@@ -17,6 +17,7 @@ import type {
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
 import { CategoriesService } from "../spending/categories.service";
+import { TransfersService } from "../spending/transfers.service";
 import {
   computeStats,
   connectionStatsFromRow,
@@ -74,6 +75,7 @@ export class BankService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly categoriesService: CategoriesService,
+    private readonly transfersService: TransfersService,
   ) {
     const applicationId = this.config.get<string>(
       "ENABLE_BANKING_APPLICATION_ID",
@@ -291,7 +293,7 @@ export class BankService {
       orderBy: [{ bookedAt: "desc" }, { id: "desc" }],
       include: {
         category: {
-          select: { id: true, name: true, color: true, icon: true },
+          select: { id: true, name: true, color: true, icon: true, kind: true },
         },
         tags: {
           include: {
@@ -321,6 +323,10 @@ export class BankService {
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
     const last = page.at(-1);
+    const transferInfo = await this.transfersService.loadTransferInfoByTransactionIds(
+      user.id,
+      page.map((tx) => tx.id),
+    );
 
     return {
       transactions: page.map((tx) => ({
@@ -343,6 +349,7 @@ export class BankService {
               name: tx.category.name,
               color: tx.category.color,
               icon: tx.category.icon,
+              kind: tx.category.kind,
             }
           : null,
         tags: tx.tags.map((row) => ({
@@ -366,9 +373,61 @@ export class BankService {
               })),
             )
           : [],
+        transfer: transferInfo.get(tx.id) ?? null,
       })),
       nextCursor:
         hasMore && last ? encodeCursor(last.bookedAt, last.id) : null,
+    };
+  }
+
+  async deleteConnection(connectionId: string) {
+    const user = await this.ensureDemoUser();
+    const connection = await this.prisma.bankConnection.findFirst({
+      where: { id: connectionId, userId: user.id },
+    });
+    if (!connection) {
+      throw new NotFoundException("Bank connection not found");
+    }
+
+    await this.prisma.$transaction(async (db) => {
+      await db.account.deleteMany({ where: { bankConnectionId: connectionId } });
+      await db.connectionStats.deleteMany({ where: { bankConnectionId: connectionId } });
+      await db.bankConnection.delete({ where: { id: connectionId } });
+    });
+
+    return { deleted: true };
+  }
+
+  async resumeConnection(connectionId: string, redirectUrl: string) {
+    const user = await this.ensureDemoUser();
+    const connection = await this.prisma.bankConnection.findFirst({
+      where: { id: connectionId, userId: user.id },
+    });
+    if (!connection) {
+      throw new NotFoundException("Bank connection not found");
+    }
+    if (connection.status === BankConnectionStatus.LINKED) {
+      throw new BadRequestException("This bank is already connected");
+    }
+
+    const link = await this.provider.createBankLink(
+      connection.institutionId,
+      redirectUrl,
+    );
+
+    await this.prisma.bankConnection.update({
+      where: { id: connectionId },
+      data: {
+        requisitionId: link.requisitionId,
+        status: BankConnectionStatus.PENDING,
+        lastError: null,
+      },
+    });
+
+    return {
+      connectionId: connection.id,
+      state: link.referenceId,
+      link: link.link,
     };
   }
 
@@ -499,6 +558,7 @@ export class BankService {
           user.id,
           syncedTransactionIds,
         );
+        await this.transfersService.suggestTransfers(user.id, syncedTransactionIds);
       }
 
       await this.recomputeConnectionStats(bankConnectionId);
@@ -616,9 +676,13 @@ export class BankService {
   /** Fallback IDs we generate when the bank omits entry_reference / transaction_id. */
   private isFallbackSyntheticId(externalId: string) {
     return (
-      /^\d{4}-\d{2}-\d{2}-/.test(externalId) ||
+      this.isLegacySyntheticId(externalId) ||
       /^-?\d+(\.\d+)?-/.test(externalId)
     );
+  }
+
+  private isLegacySyntheticId(externalId: string) {
+    return /^\d{4}-\d{2}-\d{2}-/.test(externalId);
   }
 
   private preferExternalId(next: string, current: string | null) {
@@ -627,6 +691,10 @@ export class BankService {
     const currentBank = this.isBankHexId(current);
     if (nextBank && !currentBank) return next;
     if (!nextBank && currentBank) return current;
+    const nextLegacy = this.isLegacySyntheticId(next);
+    const currentLegacy = this.isLegacySyntheticId(current);
+    if (currentLegacy && !nextLegacy) return next;
+    if (!currentLegacy && nextLegacy) return current;
     return next;
   }
 
@@ -658,7 +726,7 @@ export class BankService {
 
     const incomingDay = Math.floor(incoming.bookedAt.getTime() / 86_400_000);
     const existingDay = Math.floor(existing.bookedAt.getTime() / 86_400_000);
-    if (Math.abs(incomingDay - existingDay) > 1) return false;
+    if (Math.abs(incomingDay - existingDay) > 2) return false;
 
     const incomingSynthetic = this.isFallbackSyntheticId(incoming.externalId);
     const existingSynthetic = existing.externalId
@@ -670,10 +738,10 @@ export class BankService {
 
   private bookingShiftWindow(bookedAt: Date) {
     const start = new Date(bookedAt);
-    start.setDate(start.getDate() - 1);
+    start.setDate(start.getDate() - 2);
     start.setHours(0, 0, 0, 0);
     const end = new Date(bookedAt);
-    end.setDate(end.getDate() + 1);
+    end.setDate(end.getDate() + 2);
     end.setHours(23, 59, 59, 999);
     return { start, end };
   }

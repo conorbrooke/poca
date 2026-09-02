@@ -1,10 +1,19 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+} from "@nestjs/common";
 import {
   completeBankLinkSchema,
   connectionIdParamSchema,
   createBankLinkSchema,
   dashboardQuerySchema,
   listInstitutionsQuerySchema,
+  resumeBankLinkSchema,
   syncTransactionsSchema,
   transactionsQuerySchema,
 } from "@poca/shared";
@@ -58,6 +67,27 @@ export class BankController {
       "Connection id param",
     );
     return this.bankService.getConnection(id);
+  }
+
+  @Delete("connections/:id")
+  deleteConnection(@Param() params: unknown) {
+    const { id } = parseOrThrow(
+      connectionIdParamSchema,
+      params,
+      "Connection id param",
+    );
+    return this.bankService.deleteConnection(id);
+  }
+
+  @Post("connections/:id/resume")
+  resumeConnection(@Param() params: unknown, @Body() body: unknown) {
+    const { id } = parseOrThrow(
+      connectionIdParamSchema,
+      params,
+      "Connection id param",
+    );
+    const input = parseOrThrow(resumeBankLinkSchema, body, "Resume bank link body");
+    return this.bankService.resumeConnection(id, input.redirectUrl);
   }
 
   @Post("sync")

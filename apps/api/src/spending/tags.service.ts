@@ -8,6 +8,7 @@ import type {
   SpendingTransactionsQuery,
   TagSummaryResponse,
 } from "@poca/shared";
+import { isSpendingCategoryKind } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
 import { mapTag, toNumber } from "./mappers";
@@ -112,6 +113,8 @@ export class TagsService {
 
     for (const row of [...unsplit, ...splits]) {
       if (!row.categoryId) continue;
+      const category = categoryMap.get(row.categoryId);
+      if (!category || !isSpendingCategoryKind(category.kind)) continue;
       const current = totals.get(row.categoryId) ?? {
         totalSpent: 0,
         transactionCount: 0,
@@ -131,6 +134,7 @@ export class TagsService {
           color: category.color,
           icon: category.icon,
           isSystem: category.isSystem,
+          kind: category.kind,
           totalSpent: roundMoney(stats.totalSpent),
           transactionCount: stats.transactionCount,
           share: 0,

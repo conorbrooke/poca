@@ -711,6 +711,56 @@ button {
   margin-top: 0.25rem;
 }
 
+.spending-movements-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1.25rem 1.5rem;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid #47556955;
+  background: linear-gradient(135deg, #47556914, transparent);
+}
+
+.spending-movements-card:hover {
+  border-color: #64748b;
+}
+
+.spending-movements-total {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 0.25rem;
+}
+
+.spending-movements-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.transfer-kind-label {
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+.transfer-link-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #47556955;
+  background: #47556918;
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.transfer-link-badge.suggested {
+  border-style: dashed;
+  opacity: 0.9;
+}
+
 .range-tabs,
 .modal-tabs {
   display: flex;

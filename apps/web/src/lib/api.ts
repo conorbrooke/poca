@@ -28,6 +28,22 @@ export function apiUrl(path: string): string {
   return `${base}${normalizedPath}`;
 }
 
+function parseApiError(body: string, status: number): Error {
+  try {
+    const parsed = JSON.parse(body) as { message?: string | string[] };
+    const message = parsed.message;
+    if (typeof message === "string" && message.length > 0) {
+      return new Error(message);
+    }
+    if (Array.isArray(message) && message.length > 0) {
+      return new Error(message.join(", "));
+    }
+  } catch {
+    // fall through
+  }
+  return new Error(body || `Request failed (${status})`);
+}
+
 export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
@@ -47,7 +63,7 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(body || `Request failed (${res.status})`);
+    throw parseApiError(body, res.status);
   }
 
   return res.json() as Promise<T>;
@@ -66,7 +82,7 @@ export async function apiUpload<T>(path: string, file: File): Promise<T> {
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(body || `Request failed (${res.status})`);
+    throw parseApiError(body, res.status);
   }
 
   return res.json() as Promise<T>;

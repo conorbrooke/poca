@@ -145,5 +145,6 @@ export function isStatsMonthStale(computedAt: Date | null | undefined): boolean 
 export function syncDateFrom(daysBack: number): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - daysBack);
+  date.setUTCHours(0, 0, 0, 0);
   return date.toISOString();
 }

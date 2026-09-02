@@ -23,10 +23,12 @@ function CategoryPill({
   name,
   color,
   icon,
+  kind,
 }: {
   name: string;
   color: string;
   icon?: string | null;
+  kind?: "EXPENSE" | "INCOME" | "TRANSFER" | null;
 }) {
   return (
     <span
@@ -39,6 +41,38 @@ function CategoryPill({
     >
       {icon ? `${icon} ` : ""}
       {name}
+      {kind === "TRANSFER" ? (
+        <span className="transfer-kind-label"> · between your accounts</span>
+      ) : null}
+    </span>
+  );
+}
+
+function TransferLinkBadge({
+  transfer,
+}: {
+  transfer: DashboardTransaction["transfer"];
+}) {
+  if (!transfer) return null;
+
+  const counterparty = transfer.counterparty;
+  const label =
+    transfer.direction === "out"
+      ? counterparty
+        ? `→ ${counterparty.institutionName || counterparty.accountName}`
+        : "Awaiting matching deposit"
+      : counterparty
+        ? `← ${counterparty.institutionName || counterparty.accountName}`
+        : null;
+
+  if (!label) return null;
+
+  return (
+    <span
+      className={`transfer-link-badge${transfer.status === "SUGGESTED" ? " suggested" : ""}`}
+    >
+      {label}
+      {transfer.status === "SUGGESTED" ? " · suggested" : ""}
     </span>
   );
 }
@@ -60,6 +94,7 @@ function TransactionClassification({ tx }: { tx: DashboardTransaction }) {
         {uniqueCategories.map((category) => (
           <CategoryPill key={category.name} {...category} />
         ))}
+        <TransferLinkBadge transfer={tx.transfer} />
         {splitTags.map((tag) => (
           <span
             key={tag.id}
@@ -77,7 +112,8 @@ function TransactionClassification({ tx }: { tx: DashboardTransaction }) {
   if (tx.category) {
     return (
       <div className="transaction-classification">
-        <CategoryPill {...tx.category} />
+        <CategoryPill {...tx.category} kind={tx.category.kind} />
+        <TransferLinkBadge transfer={tx.transfer} />
         {tags.map((tag) => (
           <span
             key={tag.id}

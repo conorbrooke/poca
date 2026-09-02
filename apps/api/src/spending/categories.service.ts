@@ -11,10 +11,14 @@ import {
   loadSystemRules,
   matchTransaction,
 } from "../categorize/categorizer";
+import { TransfersService } from "./transfers.service";
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly transfersService: TransfersService,
+  ) {}
 
   async ensureDefaults(userId: string) {
     for (const definition of DEFAULT_CATEGORY_DEFINITIONS) {
@@ -30,9 +34,14 @@ export class CategoriesService {
           name: definition.name,
           color: definition.color,
           icon: definition.icon,
+          kind: definition.kind,
           isSystem: "isSystem" in definition ? definition.isSystem : false,
         },
-        update: {},
+        update: {
+          kind: definition.kind,
+          color: definition.color,
+          icon: definition.icon,
+        },
       });
     }
 
@@ -250,6 +259,7 @@ export class CategoriesService {
     }
 
     await this.invalidateSpendingCache(userId);
+    await this.transfersService.suggestTransfers(userId, transactionIds);
     return updated;
   }
 

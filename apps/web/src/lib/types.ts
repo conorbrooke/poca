@@ -1,3 +1,5 @@
+import type { TransactionTransferInfo } from "@poca/shared";
+
 export type DashboardStats = {
   totalBalance?: number;
   totalIncome: number;
@@ -49,6 +51,7 @@ export type DashboardTransaction = {
     name: string;
     color: string;
     icon: string | null;
+    kind?: "EXPENSE" | "INCOME" | "TRANSFER";
   } | null;
   tags: Array<{ id: string; name: string; color: string }>;
   splitCategories: Array<{
@@ -57,6 +60,7 @@ export type DashboardTransaction = {
     icon: string | null;
   }>;
   splitTags: Array<{ id: string; name: string; color: string }>;
+  transfer?: TransactionTransferInfo | null;
 };
 
 export type DashboardConnectionSummary = {
@@ -118,6 +122,10 @@ export type {
   TagSummaryResponse,
   ReceiptSummary,
   SplitLineSummary,
+  TransfersSummaryResponse,
+  TransferLinkSummary,
+  TransactionTransferInfo,
+  CategoryKind,
 } from "@poca/shared";
 
 export type CategoryOption = {
@@ -126,4 +134,5 @@ export type CategoryOption = {
   color: string;
   icon: string | null;
   isSystem: boolean;
+  kind: "EXPENSE" | "INCOME" | "TRANSFER";
 };

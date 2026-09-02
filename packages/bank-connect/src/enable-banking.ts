@@ -15,6 +15,7 @@ import {
   encodeInstitutionId,
   parseInstitutionId,
 } from "./types.js";
+import { buildFallbackExternalId } from "./transaction-id.js";
 
 const DEFAULT_API_ORIGIN = "https://api.enablebanking.com";
 
@@ -264,7 +265,7 @@ export class EnableBankingProvider implements BankConnectProvider {
       externalId:
         tx.entry_reference ??
         tx.transaction_id ??
-        `${signedAmount}-${description.trim()}-${stableDate}`,
+        buildFallbackExternalId(signedAmount, description, stableDate),
       amount: signedAmount,
       currency: tx.transaction_amount?.currency ?? "EUR",
       description,
