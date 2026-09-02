@@ -45,12 +45,14 @@ function CategoryPill({
 
 function TransactionClassification({ tx }: { tx: DashboardTransaction }) {
   const isExpense = tx.amount < 0;
+  const tags = uniqueTags(tx.tags ?? []);
+  const splitCategories = tx.splitCategories ?? [];
+  const splitTags = uniqueTags(tx.splitTags ?? []);
 
-  if (tx.isSplit && tx.splitCategories.length > 0) {
+  if (tx.isSplit && splitCategories.length > 0) {
     const uniqueCategories = [
-      ...new Map(tx.splitCategories.map((item) => [item.name, item])).values(),
+      ...new Map(splitCategories.map((item) => [item.name, item])).values(),
     ];
-    const tags = uniqueTags(tx.splitTags);
 
     return (
       <div className="transaction-classification">
@@ -58,25 +60,21 @@ function TransactionClassification({ tx }: { tx: DashboardTransaction }) {
         {uniqueCategories.map((category) => (
           <CategoryPill key={category.name} {...category} />
         ))}
-        {tags.length > 0 ? (
-          <div className="transaction-tags inline">
-            {tags.map((tag) => (
-              <span
-                key={tag.id}
-                className="transaction-tag"
-                style={{ borderColor: `${tag.color}44` }}
-              >
-                {tag.name}
-              </span>
-            ))}
-          </div>
-        ) : null}
+        {splitTags.map((tag) => (
+          <span
+            key={tag.id}
+            className="transaction-tag"
+            style={{ borderColor: `${tag.color}44` }}
+          >
+            <span className="tag-chip-dot" style={{ background: tag.color }} />
+            {tag.name}
+          </span>
+        ))}
       </div>
     );
   }
 
   if (tx.category) {
-    const tags = uniqueTags(tx.tags);
     return (
       <div className="transaction-classification">
         <CategoryPill {...tx.category} />
@@ -86,6 +84,7 @@ function TransactionClassification({ tx }: { tx: DashboardTransaction }) {
             className="transaction-tag"
             style={{ borderColor: `${tag.color}44` }}
           >
+            <span className="tag-chip-dot" style={{ background: tag.color }} />
             {tag.name}
           </span>
         ))}
@@ -98,12 +97,13 @@ function TransactionClassification({ tx }: { tx: DashboardTransaction }) {
   return (
     <div className="transaction-classification">
       <span className="tx-category-pill uncategorized">Uncategorized</span>
-      {uniqueTags(tx.tags).map((tag) => (
+      {tags.map((tag) => (
         <span
           key={tag.id}
           className="transaction-tag"
           style={{ borderColor: `${tag.color}44` }}
         >
+          <span className="tag-chip-dot" style={{ background: tag.color }} />
           {tag.name}
         </span>
       ))}

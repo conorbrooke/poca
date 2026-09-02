@@ -1105,12 +1105,22 @@ button {
 }
 
 .transaction-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.75rem;
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
   background: var(--bg-elevated);
   color: var(--muted);
   border: 1px solid var(--border);
+}
+
+.transaction-tag .tag-chip-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  flex-shrink: 0;
 }
 
 .split-badge {
