@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { SPENDING_RANGES } from "@poca/shared";
+import { SPENDING_RANGES, categoryKindLabel, type CategoryKind } from "@poca/shared";
+import { CategoryKindFields } from "../../../../components/category-kind-fields";
 import { SelectableTransactionList } from "../../../../components/selectable-transaction-list";
 import { apiFetch } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
@@ -38,6 +39,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const [nameValue, setNameValue] = useState("");
   const [iconValue, setIconValue] = useState("");
   const [colorValue, setColorValue] = useState("#6366f1");
+  const [kindValue, setKindValue] = useState<CategoryKind>("EXPENSE");
   const [savingCategory, setSavingCategory] = useState(false);
   const [deletingCategory, setDeletingCategory] = useState(false);
 
@@ -77,6 +79,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
       setNameValue(detailRes.category.name);
       setIconValue(detailRes.category.icon ?? "");
       setColorValue(detailRes.category.color);
+      setKindValue(detailRes.category.kind);
       setCategories(categoryList);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load category");
@@ -146,6 +149,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
           name: nameValue.trim(),
           icon: iconValue.trim() || null,
           color: colorValue,
+          kind: kindValue,
         }),
       });
       await loadData();
@@ -238,11 +242,11 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
               <p className="page-eyebrow">
                 {flow === "in" ? "Money in, not earned" : "Between your accounts"}
               </p>
-            ) : flow === "in" && detail.category.kind === "INCOME" ? (
-              <p className="page-eyebrow">Income</p>
-            ) : flow === "in" ? (
+            ) : flow === "in" && kindValue !== "INCOME" ? (
               <p className="page-eyebrow">Incoming — recategorise</p>
-            ) : null}
+            ) : (
+              <p className="page-eyebrow">{categoryKindLabel(kindValue)}</p>
+            )}
             <h2 className="spending-total">{nameValue || detail.category.name}</h2>
             <p className="bank-meta">
               {formatMoney(detail.totalSpent)} · {detail.transactionCount}{" "}
@@ -293,6 +297,12 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
               />
             </div>
           </label>
+          <CategoryKindFields
+            name="category-kind"
+            value={kindValue}
+            onChange={setKindValue}
+            disabled={isSystemCategory}
+          />
           <div className="tag-chip-row">
             <button
               type="button"
@@ -315,13 +325,13 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
           </div>
           {isSystemCategory ? (
             <p className="bank-meta">
-              Other is a system category — you can change its icon and colour, but
-              not its name or delete it.
+              Other is a system expense category — you can change its icon and
+              colour, but not its name, type, or delete it.
             </p>
           ) : (
             <p className="bank-meta">
-              Deleting moves all transactions and split lines in this category to
-              Other.
+              Expense counts as spending, income as earned, transfer as money
+              moving. Deleting moves transactions in this category to Other.
             </p>
           )}
         </div>

@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { suggestedCategoryKind, type CategoryKind } from "@poca/shared";
 import { Modal } from "./modal";
+import { CategoryKindFields } from "./category-kind-fields";
+import { CategorySelect } from "./category-select";
 import { apiFetch, apiUpload, apiUrl } from "../lib/api";
 import { formatMoney } from "../lib/format";
 import type {
@@ -47,6 +50,9 @@ export function RecategorizePanel({
   );
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryIcon, setNewCategoryIcon] = useState("");
+  const [newCategoryKind, setNewCategoryKind] = useState<CategoryKind>(
+    suggestedCategoryKind(transaction.amount),
+  );
   const [categoryMode, setCategoryMode] = useState<"existing" | "new">(
     "existing",
   );
@@ -146,6 +152,7 @@ export function RecategorizePanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newCategoryName.trim(),
+          kind: newCategoryKind,
           ...(newCategoryIcon.trim() ? { icon: newCategoryIcon.trim() } : {}),
         }),
       });
@@ -498,18 +505,11 @@ export function RecategorizePanel({
                 {categoryMode === "existing" ? (
                   <label className="login-label">
                     Category
-                    <select
-                      className="login-input"
+                    <CategorySelect
+                      categories={categories}
                       value={categoryId}
-                      onChange={(event) => setCategoryId(event.target.value)}
-                    >
-                      {categories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.icon ? `${category.icon} ` : ""}
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setCategoryId}
+                    />
                   </label>
                 ) : (
                   <>
@@ -519,7 +519,7 @@ export function RecategorizePanel({
                         className="login-input"
                         value={newCategoryName}
                         onChange={(event) => setNewCategoryName(event.target.value)}
-                        placeholder="e.g. Pet care"
+                        placeholder="e.g. Sales or Interest"
                       />
                     </label>
                     <label className="login-label">
@@ -531,6 +531,11 @@ export function RecategorizePanel({
                         placeholder="🍽️ or ⛽🚗"
                       />
                     </label>
+                    <CategoryKindFields
+                      name="new-category-kind"
+                      value={newCategoryKind}
+                      onChange={setNewCategoryKind}
+                    />
                   </>
                 )}
               </>
@@ -614,26 +619,19 @@ export function RecategorizePanel({
             </label>
             <label className="login-label">
               Category
-              <select
-                className="login-input"
+              <CategorySelect
+                categories={categories}
                 value={line.categoryId}
-                onChange={(event) =>
+                onChange={(categoryId) =>
                   setSplitDrafts((current) =>
                     current.map((item) =>
                       item.key === line.key
-                        ? { ...item, categoryId: event.target.value }
+                        ? { ...item, categoryId }
                         : item,
                     ),
                   )
                 }
-              >
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.icon ? `${category.icon} ` : ""}
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
             <div className="tag-chip-row">
               {tags.map((tag) => (

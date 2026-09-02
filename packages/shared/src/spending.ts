@@ -42,6 +42,7 @@ export const createCategorySchema = z.object({
   name: z.string().min(1).max(64),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   icon: z.string().max(32).optional(),
+  kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).default("EXPENSE"),
 });
 
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
@@ -50,6 +51,7 @@ export const updateCategorySchema = z.object({
   name: z.string().min(1).max(64).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   icon: z.string().max(32).nullable().optional(),
+  kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).optional(),
 });
 
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
@@ -280,6 +282,9 @@ export const DEFAULT_CATEGORY_DEFINITIONS = [
   { name: "Transfers", color: "#475569", icon: "↔️", kind: "TRANSFER" as const },
   { name: "ATM", color: "#334155", icon: "🏧", kind: "EXPENSE" as const },
   { name: "Bank Fees", color: "#94a3b8", icon: "🏦", kind: "EXPENSE" as const },
-  { name: "Income", color: "#3dd68c", icon: "💰", kind: "INCOME" as const },
+  { name: "Salary", color: "#3dd68c", icon: "💼", kind: "INCOME" as const },
+  { name: "Sales", color: "#22c55e", icon: "🏷️", kind: "INCOME" as const },
+  { name: "Interest", color: "#84cc16", icon: "📈", kind: "INCOME" as const },
+  { name: "Income", color: "#4ade80", icon: "💰", kind: "INCOME" as const },
   { name: "Other", color: "#71717a", icon: "📦", isSystem: true, kind: "EXPENSE" as const },
 ] as const;

@@ -4,12 +4,48 @@ import { spendingQuerySchema } from "./spending";
 export const CATEGORY_KINDS = ["EXPENSE", "INCOME", "TRANSFER"] as const;
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
 
+export const CATEGORY_KIND_OPTIONS = [
+  {
+    id: "EXPENSE" as const,
+    label: "Expense",
+    hint: "Counts as spending",
+  },
+  {
+    id: "INCOME" as const,
+    label: "Income",
+    hint: "Counts as earned",
+  },
+  {
+    id: "TRANSFER" as const,
+    label: "Transfer",
+    hint: "Money moving — not spend or earnings",
+  },
+] as const;
+
 export function isSpendingCategoryKind(kind: CategoryKind): boolean {
   return kind === "EXPENSE";
 }
 
 export function isIncomeCategoryKind(kind: CategoryKind): boolean {
   return kind === "INCOME";
+}
+
+export function categoryKindLabel(kind: CategoryKind): string {
+  return CATEGORY_KIND_OPTIONS.find((option) => option.id === kind)?.label ?? kind;
+}
+
+export function suggestedCategoryKind(amount: number): CategoryKind {
+  return amount >= 0 ? "INCOME" : "EXPENSE";
+}
+
+export function groupCategoriesByKind<T extends { kind: CategoryKind }>(
+  categories: T[],
+): Record<CategoryKind, T[]> {
+  return {
+    EXPENSE: categories.filter((category) => category.kind === "EXPENSE"),
+    INCOME: categories.filter((category) => category.kind === "INCOME"),
+    TRANSFER: categories.filter((category) => category.kind === "TRANSFER"),
+  };
 }
 
 export const linkTransferSchema = z.object({

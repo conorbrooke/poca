@@ -36,11 +36,7 @@ export class CategoriesService {
           kind: definition.kind,
           isSystem: "isSystem" in definition ? definition.isSystem : false,
         },
-        update: {
-          kind: definition.kind,
-          color: definition.color,
-          icon: definition.icon,
-        },
+        update: {},
       });
     }
   }
@@ -55,11 +51,11 @@ export class CategoriesService {
 
   async createCategory(
     userId: string,
-    input: { name: string; color?: string; icon?: string },
+    input: { name: string; color?: string; icon?: string; kind?: "EXPENSE" | "INCOME" | "TRANSFER" },
   ) {
     const name = input.name.trim();
 
-    return this.prisma.category.upsert({
+    const created = await this.prisma.category.upsert({
       where: {
         userId_name: {
           userId,
@@ -71,18 +67,28 @@ export class CategoriesService {
         name,
         color: input.color ?? "#6366f1",
         icon: input.icon,
+        kind: input.kind ?? "EXPENSE",
       },
       update: {
         ...(input.color ? { color: input.color } : {}),
         ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        ...(input.kind ? { kind: input.kind } : {}),
       },
     });
+
+    await this.invalidateSpendingCache(userId);
+    return created;
   }
 
   async updateCategory(
     userId: string,
     categoryId: string,
-    input: { name?: string; color?: string; icon?: string | null },
+    input: {
+      name?: string;
+      color?: string;
+      icon?: string | null;
+      kind?: "EXPENSE" | "INCOME" | "TRANSFER";
+    },
   ) {
     const category = await this.prisma.category.findFirst({
       where: { id: categoryId, userId },
@@ -95,6 +101,9 @@ export class CategoriesService {
       input.name.trim() !== category.name
     ) {
       throw new BadRequestException("System categories cannot be renamed");
+    }
+    if (category.isSystem && input.kind && input.kind !== category.kind) {
+      throw new BadRequestException("System categories cannot change type");
     }
 
     if (input.name) {
@@ -113,6 +122,7 @@ export class CategoriesService {
         ...(input.name ? { name: input.name.trim() } : {}),
         ...(input.color ? { color: input.color } : {}),
         ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        ...(input.kind ? { kind: input.kind } : {}),
       },
     });
 

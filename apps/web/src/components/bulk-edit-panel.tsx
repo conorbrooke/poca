@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "./modal";
+import { CategorySelect } from "./category-select";
 import { apiFetch } from "../lib/api";
 import type { CategoryOption, TagOption } from "../lib/types";
 
@@ -90,18 +91,11 @@ export function BulkEditPanel({
         {changeCategory ? (
           <label className="login-label">
             Category
-            <select
-              className="login-input"
+            <CategorySelect
+              categories={categories}
               value={categoryId}
-              onChange={(event) => setCategoryId(event.target.value)}
-            >
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.icon ? `${category.icon} ` : ""}
-                  {category.name}
-                </option>
-              ))}
-            </select>
+              onChange={setCategoryId}
+            />
           </label>
         ) : null}
 

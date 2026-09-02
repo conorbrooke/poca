@@ -1045,6 +1045,14 @@ button {
   color: var(--muted);
 }
 
+.radio-label.kind-option {
+  align-items: flex-start;
+}
+
+.radio-label.kind-option input {
+  margin-top: 0.2rem;
+}
+
 .alert-warning {
   background: rgba(251, 191, 36, 0.12);
   color: var(--warning);

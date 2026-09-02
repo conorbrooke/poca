@@ -8,8 +8,8 @@ export default function IncomePage() {
         <p className="page-eyebrow">Organise · Track · Understand</p>
         <h1 className="page-title">Income</h1>
         <p className="page-subtitle">
-          Incoming money: mark salary as income and reimbursements, deposits,
-          and top-ups as transfers.
+          Incoming money: salary, sales, interest, and anything else you earn.
+          Put reimbursements, deposits, and top-ups in Transfers.
         </p>
       </header>
       <Suspense
