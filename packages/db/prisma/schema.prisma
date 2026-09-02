@@ -244,6 +244,7 @@ model Transaction {
   payeeLabel  String?
   bookedAt    DateTime
   isSplit     Boolean  @default(false)
+  categoryLocked Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

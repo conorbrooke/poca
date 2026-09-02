@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnableBankingProvider } from "@poca/bank-connect";
+import { EnableBankingApiError } from "@poca/bank-connect";
 import type { BankConnectProvider, ExternalTransaction } from "@poca/bank-connect";
 import { BankConnectionStatus, BankProvider, SyncJobStatus } from "@poca/db";
 import type {
@@ -112,7 +113,7 @@ export class BankService {
 
     // TODO: Remove this once auth is implemented
     const user = await this.ensureDemoUser();
-    const link = await this.provider.createBankLink(
+    const link = await this.createAuthLink(
       institutionId,
       redirectUrl,
       referenceId,
@@ -410,7 +411,7 @@ export class BankService {
       throw new BadRequestException("This bank is already connected");
     }
 
-    const link = await this.provider.createBankLink(
+    const link = await this.createAuthLink(
       connection.institutionId,
       redirectUrl,
     );
@@ -548,8 +549,10 @@ export class BankService {
 
         for (const tx of transactions) {
           const saved = await this.upsertSyncedTransaction(account.id, tx);
-          syncedTransactionIds.push(saved.id);
           syncedCount++;
+          if (saved.isNew) {
+            syncedTransactionIds.push(saved.id);
+          }
         }
       }
 
@@ -768,7 +771,7 @@ export class BankService {
     );
 
     if (duplicate) {
-      return this.prisma.transaction.update({
+      const updated = await this.prisma.transaction.update({
         where: { id: duplicate.id },
         data: {
           externalId: this.preferExternalId(
@@ -782,9 +785,20 @@ export class BankService {
           bookedAt: tx.bookedAt,
         },
       });
+      return { id: updated.id, isNew: false };
     }
 
-    return this.prisma.transaction.upsert({
+    const existing = await this.prisma.transaction.findUnique({
+      where: {
+        accountId_externalId: {
+          accountId,
+          externalId: tx.externalId,
+        },
+      },
+      select: { id: true },
+    });
+
+    const saved = await this.prisma.transaction.upsert({
       where: {
         accountId_externalId: {
           accountId,
@@ -807,6 +821,57 @@ export class BankService {
         bookedAt: tx.bookedAt,
       },
     });
+
+    return { id: saved.id, isNew: !existing };
+  }
+
+  private resolveRedirectUrl(clientRedirectUrl: string): string {
+    const configured =
+      this.config.get<string>("BANK_REDIRECT_URL")?.trim() ||
+      (this.config.get<string>("WEB_URL")?.trim()
+        ? `${this.config.get<string>("WEB_URL")!.replace(/\/$/, "")}/bank/callback`
+        : undefined);
+    return configured || clientRedirectUrl;
+  }
+
+  private async createAuthLink(
+    institutionId: string,
+    redirectUrl: string,
+    referenceId?: string,
+  ) {
+    const resolvedRedirectUrl = this.resolveRedirectUrl(redirectUrl);
+    try {
+      return await this.provider.createBankLink(
+        institutionId,
+        resolvedRedirectUrl,
+        referenceId,
+      );
+    } catch (error) {
+      throw this.mapBankLinkError(error, resolvedRedirectUrl);
+    }
+  }
+
+  private mapBankLinkError(
+    error: unknown,
+    redirectUrl: string,
+  ): BadRequestException {
+    if (error instanceof EnableBankingApiError) {
+      if (error.body.error === "REDIRECT_URI_NOT_ALLOWED") {
+        return new BadRequestException(
+          `Redirect URI not allowed by Enable Banking: ${redirectUrl}. ` +
+            `Production apps require an exact HTTPS match in API applications → Redirect URIs ` +
+            `(http://localhost is often rejected). BOI may have connected earlier with a different whitelisted URL. ` +
+            `Add your HTTPS callback (e.g. Vercel or ngrok) to Enable Banking, set BANK_REDIRECT_URL in .env, and restart the API.`,
+        );
+      }
+      return new BadRequestException(
+        error.body.message ?? "Enable Banking rejected the bank link request",
+      );
+    }
+    if (error instanceof Error) {
+      return new BadRequestException(error.message);
+    }
+    return new BadRequestException("Failed to start bank authorisation");
   }
 
   private mapRequisitionStatus(status: string): BankConnectionStatus {

@@ -87,7 +87,9 @@ export class SpendingController {
   @Post("categorize")
   async categorizeAll() {
     const userId = await this.demoUserId();
-    const updated = await this.categoriesService.categorizeTransactions(userId);
+    const updated = await this.categoriesService.categorizeTransactions(userId, undefined, {
+      force: true,
+    });
     return { updatedCount: updated };
   }
 

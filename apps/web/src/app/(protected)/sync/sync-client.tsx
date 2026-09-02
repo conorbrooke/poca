@@ -97,7 +97,9 @@ export function SyncClient() {
     [institutions, connectionByInstitution],
   );
 
-  function redirectUrl() {
+  function bankRedirectUrl() {
+    const configured = process.env.NEXT_PUBLIC_BANK_REDIRECT_URL?.trim();
+    if (configured) return configured;
     return `${window.location.origin}/bank/callback`;
   }
 
@@ -112,7 +114,7 @@ export function SyncClient() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ redirectUrl: redirectUrl() }),
+          body: JSON.stringify({ redirectUrl: bankRedirectUrl() }),
         },
       );
       window.location.href = result.link;
@@ -153,13 +155,12 @@ export function SyncClient() {
     setMessage(null);
 
     try {
-      const redirectUrl = `${window.location.origin}/bank/callback`;
       const result = await apiFetch<LinkResponse>("/bank/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           institutionId: institution.id,
-          redirectUrl,
+          redirectUrl: bankRedirectUrl(),
         }),
       });
 

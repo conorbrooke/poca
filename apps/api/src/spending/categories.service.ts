@@ -8,7 +8,6 @@ import { PrismaService } from "../prisma/prisma.module";
 import {
   buildFallbackPayee,
   extractRuleMatchText,
-  loadSystemRules,
   matchTransaction,
 } from "../categorize/categorizer";
 import { TransfersService } from "./transfers.service";
@@ -41,36 +40,6 @@ export class CategoriesService {
           kind: definition.kind,
           color: definition.color,
           icon: definition.icon,
-        },
-      });
-    }
-
-    await this.ensureSystemRules(userId);
-  }
-
-  async ensureSystemRules(userId: string) {
-    const categories = await this.prisma.category.findMany({
-      where: { userId },
-    });
-    const categoryByName = new Map(categories.map((c) => [c.name, c.id]));
-    const existing = await this.prisma.categoryRule.findMany({
-      where: { userId, source: "system" },
-      select: { matchText: true },
-    });
-    const existingMatches = new Set(existing.map((rule) => rule.matchText));
-
-    for (const rule of loadSystemRules()) {
-      const categoryId = categoryByName.get(rule.category);
-      if (!categoryId || existingMatches.has(rule.matchText)) continue;
-
-      await this.prisma.categoryRule.create({
-        data: {
-          userId,
-          categoryId,
-          matchText: rule.matchText,
-          payeeLabel: rule.payeeLabel,
-          priority: rule.priority,
-          source: "system",
         },
       });
     }
@@ -211,9 +180,11 @@ export class CategoriesService {
   async categorizeTransactions(
     userId: string,
     transactionIds?: string[],
+    options?: { force?: boolean },
   ): Promise<number> {
     await this.ensureDefaults(userId);
     const otherCategoryId = await this.getOtherCategoryId(userId);
+    const force = options?.force ?? false;
 
     const userRules = await this.prisma.categoryRule.findMany({
       where: { userId },
@@ -226,6 +197,7 @@ export class CategoriesService {
         isSplit: false,
         account: { userId },
         ...(transactionIds ? { id: { in: transactionIds } } : {}),
+        ...(force ? {} : { categoryLocked: false }),
       },
       select: {
         id: true,
@@ -341,6 +313,7 @@ export class CategoriesService {
       where: { id: { in: idsToUpdate } },
       data: {
         payeeLabel: input.payeeLabel,
+        categoryLocked: true,
         ...(input.categoryId && !transaction.isSplit
           ? { categoryId: input.categoryId }
           : {}),
@@ -384,6 +357,10 @@ export class CategoriesService {
             where: { id: split.id },
             data: { categoryId: input.categoryId },
           });
+          await this.prisma.transaction.update({
+            where: { id: split.transactionId },
+            data: { categoryLocked: true },
+          });
         }
 
         if (input.tagIds !== undefined) {
@@ -406,7 +383,7 @@ export class CategoriesService {
       if (input.categoryId) {
         await this.prisma.transaction.update({
           where: { id: transaction.id },
-          data: { categoryId: input.categoryId },
+          data: { categoryId: input.categoryId, categoryLocked: true },
         });
       }
 

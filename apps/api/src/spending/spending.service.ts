@@ -356,7 +356,7 @@ export class SpendingService {
       await db.transactionTag.deleteMany({ where: { transactionId } });
       await db.transaction.update({
         where: { id: transactionId },
-        data: { isSplit: true, categoryId: null },
+        data: { isSplit: true, categoryId: null, categoryLocked: true },
       });
 
       for (const line of signedSplits) {
@@ -400,6 +400,7 @@ export class SpendingService {
           isSplit: false,
           categoryId: input.categoryId,
           payeeLabel: input.payeeLabel,
+          categoryLocked: true,
         },
       });
       await db.transactionTag.deleteMany({ where: { transactionId } });

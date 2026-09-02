@@ -19,6 +19,25 @@ import { buildFallbackExternalId } from "./transaction-id.js";
 
 const DEFAULT_API_ORIGIN = "https://api.enablebanking.com";
 
+export type EnableBankingErrorBody = {
+  code?: number;
+  message?: string;
+  error?: string;
+  detail?: unknown;
+};
+
+export class EnableBankingApiError extends Error {
+  readonly status: number;
+  readonly body: EnableBankingErrorBody;
+
+  constructor(status: number, body: EnableBankingErrorBody) {
+    super(body.message ?? `Enable Banking API error ${status}`);
+    this.name = "EnableBankingApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 // Account Servicing Payment Service Provider (ASPSP)
 interface EnableBankingAspsp {
   name: string;
@@ -93,9 +112,13 @@ export class EnableBankingProvider implements BankConnectProvider {
 
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(
-        `Enable Banking API error ${response.status}: ${body}`,
-      );
+      let parsed: EnableBankingErrorBody = {};
+      try {
+        parsed = JSON.parse(body) as EnableBankingErrorBody;
+      } catch {
+        parsed = { message: body };
+      }
+      throw new EnableBankingApiError(response.status, parsed);
     }
 
     return response.json() as Promise<T>;

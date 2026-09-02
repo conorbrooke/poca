@@ -1,28 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { derivePayeeLabel, normalizeSearchText } from "../spending/period";
-
-function resolveRulesPath(): string {
-  const candidates = [
-    join(__dirname, "category-rules.ie.json"),
-    join(process.cwd(), "src/categorize/category-rules.ie.json"),
-    join(process.cwd(), "apps/api/src/categorize/category-rules.ie.json"),
-  ];
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-
-  throw new Error("category-rules.ie.json not found");
-}
-
-export type SystemRule = {
-  category: string;
-  payeeLabel: string;
-  matchText: string;
-  priority: number;
-  source: string;
-};
 
 export type RuleMatch = {
   categoryName: string;
@@ -33,23 +9,10 @@ export type RuleMatch = {
   tagIds: string[];
 };
 
-type RulesFile = {
-  rules: SystemRule[];
-};
-
-let cachedSystemRules: SystemRule[] | null = null;
-
-export function loadSystemRules(): SystemRule[] {
-  if (cachedSystemRules) return cachedSystemRules;
-  const raw = readFileSync(resolveRulesPath(), "utf8");
-  cachedSystemRules = (JSON.parse(raw) as RulesFile).rules;
-  return cachedSystemRules;
-}
-
 export function matchTransaction(
   description: string,
   merchant: string | null | undefined,
-  userRules: Array<{
+  rules: Array<{
     matchText: string;
     payeeLabel: string;
     priority: number;
@@ -61,26 +24,16 @@ export function matchTransaction(
   const haystack = normalizeSearchText(description, merchant);
   let best: RuleMatch | null = null;
 
-  const candidates: RuleMatch[] = [
-    ...userRules.map((rule) => ({
+  for (const rule of rules) {
+    const candidate: RuleMatch = {
       categoryName: rule.category.name,
-      payeeLabel: rule.payeeLabel,
-      matchText: rule.matchText,
-      priority: rule.priority + 10_000,
-      source: rule.source,
-      tagIds: rule.tags?.map((tag) => tag.tagId) ?? [],
-    })),
-    ...loadSystemRules().map((rule) => ({
-      categoryName: rule.category,
       payeeLabel: rule.payeeLabel,
       matchText: rule.matchText,
       priority: rule.priority,
       source: rule.source,
-      tagIds: [] as string[],
-    })),
-  ];
+      tagIds: rule.tags?.map((tag) => tag.tagId) ?? [],
+    };
 
-  for (const candidate of candidates) {
     if (!haystack.includes(candidate.matchText.toLowerCase())) continue;
     if (!best || candidate.priority > best.priority) {
       best = candidate;
