@@ -9,7 +9,8 @@ export default function IncomePage() {
         <h1 className="page-title">Income</h1>
         <p className="page-subtitle">
           Incoming money: salary, sales, interest, and anything else you earn.
-          Put reimbursements, deposits, and top-ups in Transfers.
+          Put reimbursements, deposits, and top-ups in Transfers. Amounts are
+          in euros; other currencies use today's rates.
         </p>
       </header>
       <Suspense

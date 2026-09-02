@@ -102,6 +102,7 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
             <p className="bank-meta">
               {data?.transactionCount ?? 0} expense transactions ·{" "}
               {SPENDING_RANGES.find((r) => r.id === range)?.label ?? range}
+              {" · EUR at today's rates"}
             </p>
           </div>
           <button

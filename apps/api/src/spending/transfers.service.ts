@@ -11,6 +11,7 @@ import type {
 } from "@poca/shared";
 import { CategoryKind, TransferLinkStatus } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
+import { FxService } from "../fx/fx.service";
 import { resolveSpendingPeriod, roundMoney } from "./period";
 import { toNumber } from "./mappers";
 import { matchTransferPairs } from "./transfer-matching";
@@ -29,7 +30,10 @@ type TxWithAccount = {
 
 @Injectable()
 export class TransfersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fx: FxService,
+  ) {}
 
   async suggestTransfers(userId: string, transactionIds?: string[]) {
     const transferCategoryIds = await this.getTransferCategoryIds(userId);
@@ -192,8 +196,13 @@ export class TransfersService {
     });
 
     const transfers = links.map((link) => this.mapLink(link));
+    const rates = await this.fx.getRates();
     const totalTransferred = roundMoney(
-      transfers.reduce((sum, row) => sum + Math.abs(row.amount), 0),
+      transfers.reduce(
+        (sum, row) =>
+          sum + Math.abs(this.fx.toEur(row.amount, row.currency, rates)),
+        0,
+      ),
     );
     const linkedCount = transfers.filter((row) => row.in).length;
     const unlinkedCount = transfers.length - linkedCount;

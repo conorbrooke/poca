@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { apiFetch } from "../lib/api";
-import { formatDate, formatMoney } from "../lib/format";
+import { formatDate } from "../lib/format";
 import {
   parseTransactionSelectionKey,
   transactionSelectionKey,
@@ -10,6 +10,7 @@ import {
 import type { CategoryOption, SpendingTransaction } from "../lib/types";
 import { BulkEditPanel } from "./bulk-edit-panel";
 import { RecategorizePanel } from "./recategorize-panel";
+import { TransactionAmount } from "./transaction-amount";
 
 type SelectableTransactionListProps = {
   transactions: SpendingTransaction[];
@@ -177,9 +178,11 @@ export function SelectableTransactionList({
                     {tx.splitOutOfBalance ? <span>Out of balance</span> : null}
                   </div>
                 </div>
-                <p className={`transaction-amount ${tx.amount >= 0 ? "income" : "expense"}`}>
-                  {formatMoney(tx.amount, tx.currency, { signed: true })}
-                </p>
+                <TransactionAmount
+                  amount={tx.amount}
+                  currency={tx.currency}
+                  amountEur={tx.amountEur}
+                />
               </button>
             </div>
           );

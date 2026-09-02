@@ -18,6 +18,7 @@ import type {
 import { isIncomeCategoryKind, isSpendingCategoryKind } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
+import { FxService } from "../fx/fx.service";
 import { CategoriesService } from "./categories.service";
 import { mapTag, splitsOutOfBalance, toNumber } from "./mappers";
 import { resolveSpendingPeriod, roundMoney, toDateOnly } from "./period";
@@ -39,6 +40,7 @@ export class SpendingService {
     private readonly prisma: PrismaService,
     private readonly categoriesService: CategoriesService,
     private readonly transfersService: TransfersService,
+    private readonly fx: FxService,
   ) {}
 
   async getSummary(
@@ -64,7 +66,10 @@ export class SpendingService {
         orderBy: { totalSpent: "desc" },
       });
 
-      if (cached.length > 0) {
+      if (
+        cached.length > 0 &&
+        this.fx.isConvertedCacheFresh(cached[0]!.computedAt)
+      ) {
         return this.buildSummaryFromRows(
           query.range,
           periodStart,
@@ -110,27 +115,28 @@ export class SpendingService {
     const bankConnectionId = query.bankConnectionId ?? null;
     const flow = query.flow ?? "out";
 
-    let payees =
-      flow === "out" && !query.tagIds?.length
-        ? (
-            await this.prisma.categoryPeriodStat.findFirst({
-              where: {
-                userId,
-                categoryId,
-                rangeType: query.range,
-                periodStart: toDateOnly(periodStart),
-                periodEnd: toDateOnly(periodEnd),
-                bankConnectionId,
-              },
-              include: { payees: { orderBy: { totalSpent: "desc" } } },
-            })
-          )?.payees.map((payee) => ({
-            payeeLabel: payee.payeeLabel,
-            totalSpent: toNumber(payee.totalSpent),
-            transactionCount: payee.transactionCount,
-            share: 0,
-          })) ?? []
-        : [];
+    let payees: CategoryDetailResponse["payees"] = [];
+    if (flow === "out" && !query.tagIds?.length) {
+      const cachedStat = await this.prisma.categoryPeriodStat.findFirst({
+        where: {
+          userId,
+          categoryId,
+          rangeType: query.range,
+          periodStart: toDateOnly(periodStart),
+          periodEnd: toDateOnly(periodEnd),
+          bankConnectionId,
+        },
+        include: { payees: { orderBy: { totalSpent: "desc" } } },
+      });
+      if (cachedStat && this.fx.isConvertedCacheFresh(cachedStat.computedAt)) {
+        payees = cachedStat.payees.map((payee) => ({
+          payeeLabel: payee.payeeLabel,
+          totalSpent: toNumber(payee.totalSpent),
+          transactionCount: payee.transactionCount,
+          share: 0,
+        }));
+      }
+    }
 
     if (payees.length === 0) {
       payees = await this.computePayeeBreakdown(
@@ -191,6 +197,7 @@ export class SpendingService {
     const tagFilter = this.tagAndFilter(query.tagIds);
     const flow = query.flow ?? "out";
     const amount = amountFilter(flow);
+    const rates = await this.fx.getRates();
 
     const unsplit = await this.prisma.transaction.findMany({
       where: {
@@ -246,8 +253,8 @@ export class SpendingService {
     });
 
     const items: SpendingTransaction[] = [
-      ...unsplit.map((tx) => this.mapUnsplit(tx)),
-      ...splits.map((split) => this.mapSplit(split)),
+      ...unsplit.map((tx) => this.mapUnsplit(tx, rates)),
+      ...splits.map((split) => this.mapSplit(split, rates)),
     ].sort((a, b) => {
       const byDate = b.bookedAt.localeCompare(a.bookedAt);
       if (byDate !== 0) return byDate;
@@ -315,7 +322,8 @@ export class SpendingService {
     });
     if (!tx) throw new NotFoundException("Transaction not found");
 
-    const base = this.mapUnsplit(tx);
+    const rates = await this.fx.getRates();
+    const base = this.mapUnsplit(tx, rates);
     const transferInfo = await this.transfersService.loadTransferInfoByTransactionIds(
       userId,
       [tx.id],
@@ -333,6 +341,11 @@ export class SpendingService {
       splits: tx.splits.map((split) => ({
         id: split.id,
         amount: toNumber(split.amount),
+        amountEur: this.fx.toEur(
+          toNumber(split.amount),
+          tx.currency,
+          rates,
+        ),
         categoryId: split.categoryId,
         categoryName: split.category.name,
         payeeLabel: split.payeeLabel,
@@ -537,6 +550,7 @@ export class SpendingService {
     const tagFilter = this.tagAndFilter(tagIds);
     const amount = amountFilter(flow);
 
+    const rates = await this.fx.getRates();
     const unsplit = await this.prisma.transaction.findMany({
       where: {
         isSplit: false,
@@ -546,7 +560,7 @@ export class SpendingService {
         categoryId: { not: null },
         ...tagFilter,
       },
-      select: { categoryId: true, amount: true, payeeLabel: true },
+      select: { categoryId: true, amount: true, currency: true, payeeLabel: true },
     });
 
     const splits = await this.prisma.transactionSplit.findMany({
@@ -559,7 +573,12 @@ export class SpendingService {
           account: accountFilter,
         },
       },
-      select: { categoryId: true, amount: true, payeeLabel: true },
+      select: {
+        categoryId: true,
+        amount: true,
+        payeeLabel: true,
+        transaction: { select: { currency: true } },
+      },
     });
 
     const categories = await this.prisma.category.findMany({ where: { userId } });
@@ -573,14 +592,29 @@ export class SpendingService {
       }
     >();
 
-    for (const row of [...unsplit, ...splits]) {
+    const rows = [
+      ...unsplit.map((row) => ({
+        categoryId: row.categoryId,
+        amount: row.amount,
+        currency: row.currency,
+        payeeLabel: row.payeeLabel,
+      })),
+      ...splits.map((row) => ({
+        categoryId: row.categoryId,
+        amount: row.amount,
+        currency: row.transaction.currency,
+        payeeLabel: row.payeeLabel,
+      })),
+    ];
+
+    for (const row of rows) {
       if (!row.categoryId) continue;
       const current = grouped.get(row.categoryId) ?? {
         totalSpent: 0,
         transactionCount: 0,
         payees: new Map(),
       };
-      const spent = Math.abs(toNumber(row.amount));
+      const spent = Math.abs(this.fx.toEur(toNumber(row.amount), row.currency, rates));
       current.totalSpent += spent;
       current.transactionCount += 1;
       const payeeKey = row.payeeLabel ?? "Unknown";
@@ -756,6 +790,7 @@ export class SpendingService {
     const tagFilter = this.tagAndFilter(tagIds);
     const amount = amountFilter(flow);
 
+    const rates = await this.fx.getRates();
     const unsplit = await this.prisma.transaction.findMany({
       where: {
         isSplit: false,
@@ -765,7 +800,7 @@ export class SpendingService {
         account: accountFilter,
         ...tagFilter,
       },
-      select: { payeeLabel: true, amount: true },
+      select: { payeeLabel: true, amount: true, currency: true },
     });
     const splits = await this.prisma.transactionSplit.findMany({
       where: {
@@ -778,14 +813,32 @@ export class SpendingService {
           account: accountFilter,
         },
       },
-      select: { payeeLabel: true, amount: true },
+      select: {
+        payeeLabel: true,
+        amount: true,
+        transaction: { select: { currency: true } },
+      },
     });
 
     const payees = new Map<string, { totalSpent: number; transactionCount: number }>();
-    for (const row of [...unsplit, ...splits]) {
+    const rows = [
+      ...unsplit.map((row) => ({
+        payeeLabel: row.payeeLabel,
+        amount: row.amount,
+        currency: row.currency,
+      })),
+      ...splits.map((row) => ({
+        payeeLabel: row.payeeLabel,
+        amount: row.amount,
+        currency: row.transaction.currency,
+      })),
+    ];
+    for (const row of rows) {
       const key = row.payeeLabel ?? "Unknown";
       const current = payees.get(key) ?? { totalSpent: 0, transactionCount: 0 };
-      current.totalSpent += Math.abs(toNumber(row.amount));
+      current.totalSpent += Math.abs(
+        this.fx.toEur(toNumber(row.amount), row.currency, rates),
+      );
       current.transactionCount += 1;
       payees.set(key, current);
     }
@@ -828,14 +881,18 @@ export class SpendingService {
       name: string;
       bankConnection: { institutionName: string } | null;
     };
-  }): SpendingTransaction {
+  },
+  rates: Record<string, number>,
+  ): SpendingTransaction {
     const splitAmounts = (tx.splits ?? []).map((split) => toNumber(split.amount));
+    const amount = toNumber(tx.amount);
     return {
       kind: "transaction",
       id: tx.id,
       transactionId: tx.id,
       splitId: null,
-      amount: toNumber(tx.amount),
+      amount,
+      amountEur: this.fx.toEur(amount, tx.currency, rates),
       currency: tx.currency,
       description: tx.description,
       merchant: tx.merchant,
@@ -881,14 +938,18 @@ export class SpendingService {
         bankConnection: { institutionName: string } | null;
       };
     };
-  }): SpendingTransaction {
+  },
+  rates: Record<string, number>,
+  ): SpendingTransaction {
     const splitAmounts = split.transaction.splits.map((item) => toNumber(item.amount));
+    const amount = toNumber(split.amount);
     return {
       kind: "split",
       id: split.id,
       transactionId: split.transaction.id,
       splitId: split.id,
-      amount: toNumber(split.amount),
+      amount,
+      amountEur: this.fx.toEur(amount, split.transaction.currency, rates),
       currency: split.transaction.currency,
       description: split.description ?? split.transaction.description,
       merchant: split.transaction.merchant,

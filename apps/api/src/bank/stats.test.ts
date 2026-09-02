@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sumBalancesByCurrency } from "@poca/shared";
-import { syncDateFrom } from "./stats.js";
+import { convertToEur } from "../fx/convert.js";
+import { computeStats, syncDateFrom } from "./stats.js";
 
 describe("syncDateFrom", () => {
   it("returns start of today for daysBack 0", () => {
@@ -24,6 +25,22 @@ describe("syncDateFrom", () => {
     expected.setUTCHours(0, 0, 0, 0);
 
     expect(parsed.toISOString()).toBe(expected.toISOString());
+  });
+});
+
+describe("computeStats", () => {
+  it("converts TRY spending to EUR instead of counting lira as euros", () => {
+    const bookedAt = new Date("2026-01-15T12:00:00.000Z");
+    const rates = { EUR: 1, TRY: 55 };
+    const stats = computeStats(
+      [
+        { amount: { toString: () => "-20" }, bookedAt, currency: "EUR" },
+        { amount: { toString: () => "-110" }, bookedAt, currency: "TRY" },
+      ],
+      (amount, currency) => convertToEur(amount, currency, rates),
+    );
+
+    expect(stats.totalSpent).toBe(22);
   });
 });
 

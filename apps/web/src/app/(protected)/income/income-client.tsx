@@ -165,7 +165,7 @@ export function IncomeClient() {
               {data?.transactionCount ?? 0} income transaction
               {(data?.transactionCount ?? 0) === 1 ? "" : "s"} ·{" "}
               {SPENDING_RANGES.find((item) => item.id === range)?.label ?? range}
-              · transfers excluded
+              · transfers excluded · EUR at today's rates
             </p>
           </div>
         </div>

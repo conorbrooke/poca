@@ -8,8 +8,8 @@ export default function SpendingPage() {
         <p className="page-eyebrow">Organise · Track · Understand</p>
         <h1 className="page-title">Spending</h1>
         <p className="page-subtitle">
-          See where your money goes by category and merchant, filtered by date
-          range.
+          See where your money goes by category and merchant. Amounts are in
+          euros; other currencies use today's rates.
         </p>
       </header>
       <Suspense

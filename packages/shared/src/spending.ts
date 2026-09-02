@@ -187,6 +187,7 @@ export type ReceiptSummary = {
 export type SplitLineSummary = {
   id: string;
   amount: number;
+  amountEur: number;
   categoryId: string;
   categoryName: string | null;
   payeeLabel: string;
@@ -200,6 +201,7 @@ export type SpendingTransaction = {
   transactionId: string;
   splitId: string | null;
   amount: number;
+  amountEur: number;
   currency: string;
   description: string;
   merchant: string | null;

@@ -1,5 +1,6 @@
 import type { DashboardTransaction } from "../lib/types";
-import { formatDate, formatMoney } from "../lib/format";
+import { formatDate } from "../lib/format";
+import { TransactionAmount } from "./transaction-amount";
 
 type TransactionListProps = {
   transactions: DashboardTransaction[];
@@ -177,7 +178,6 @@ export function TransactionList({
     <>
       <div className="transaction-list">
         {transactions.map((tx) => {
-          const isIncome = tx.amount >= 0;
           const title = tx.payeeLabel ?? tx.description;
           const showDescription =
             tx.payeeLabel &&
@@ -202,11 +202,11 @@ export function TransactionList({
                 </div>
                 <TransactionClassification tx={tx} />
               </div>
-              <p
-                className={`transaction-amount ${isIncome ? "income" : "expense"}`}
-              >
-                {formatMoney(tx.amount, tx.currency, { signed: true })}
-              </p>
+              <TransactionAmount
+                amount={tx.amount}
+                currency={tx.currency}
+                amountEur={tx.amountEur}
+              />
             </article>
           );
         })}

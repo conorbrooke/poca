@@ -7,6 +7,7 @@ import { CategoryKindFields } from "./category-kind-fields";
 import { CategorySelect } from "./category-select";
 import { apiFetch, apiUpload, apiUrl } from "../lib/api";
 import { formatMoney } from "../lib/format";
+import { TransactionAmount } from "./transaction-amount";
 import type {
   CategoryOption,
   ReceiptSummary,
@@ -368,11 +369,11 @@ export function RecategorizePanel({
             <h2 id="recategorize-title" className="section-title">
               {transaction.payeeLabel ?? transaction.description}
             </h2>
-            <p className="bank-meta">
-              {formatMoney(transaction.amount, transaction.currency, {
-                signed: true,
-              })}
-            </p>
+            <TransactionAmount
+              amount={transaction.amount}
+              currency={transaction.currency}
+              amountEur={transaction.amountEur}
+            />
           </div>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Close
@@ -560,8 +561,8 @@ export function RecategorizePanel({
         <h3 className="section-title">Split transaction</h3>
         <p className="bank-meta">
           Break this bank transaction into smaller lines. Lines must add up to{" "}
-          {formatMoney(Math.abs(parentAmount))}. Remaining:{" "}
-          {formatMoney(remaining)}
+          {formatMoney(Math.abs(parentAmount), transaction.currency)}. Remaining:{" "}
+          {formatMoney(remaining, transaction.currency)}
         </p>
         {splitDrafts.map((line, index) => (
           <div key={line.key} className="split-line-card">

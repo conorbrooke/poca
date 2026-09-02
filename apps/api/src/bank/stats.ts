@@ -3,6 +3,7 @@ import type { ConnectionStats } from "@poca/shared";
 type TransactionRecord = {
   amount: { toString(): string };
   bookedAt: Date;
+  currency: string;
 };
 
 function toNumber(value: { toString(): string }): number {
@@ -13,7 +14,10 @@ export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export function computeStats(transactions: TransactionRecord[]): ConnectionStats {
+export function computeStats(
+  transactions: TransactionRecord[],
+  toEur: (amount: number, currency: string) => number,
+): ConnectionStats {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -23,7 +27,7 @@ export function computeStats(transactions: TransactionRecord[]): ConnectionStats
   let thisMonthSpent = 0;
 
   for (const tx of transactions) {
-    const amount = toNumber(tx.amount);
+    const amount = toEur(toNumber(tx.amount), tx.currency);
     const bookedAt = tx.bookedAt;
 
     if (amount >= 0) {
@@ -41,7 +45,7 @@ export function computeStats(transactions: TransactionRecord[]): ConnectionStats
 
   const transactionCount = transactions.length;
   const totalVolume = transactions.reduce(
-    (sum, tx) => sum + Math.abs(toNumber(tx.amount)),
+    (sum, tx) => sum + Math.abs(toEur(toNumber(tx.amount), tx.currency)),
     0,
   );
 

@@ -42,12 +42,13 @@ export function StatsGrid({ stats, showBalance = true }: StatsGridProps) {
         label="Total spent"
         value={formatMoney(stats.totalSpent)}
         tone="expense"
-        hint={`${stats.transactionCount} transactions`}
+        hint={`${stats.transactionCount} transactions · EUR at today's rates`}
       />
       <StatCard
         label="Total income"
         value={formatMoney(stats.totalIncome)}
         tone="income"
+        hint="EUR at today's rates"
       />
       <StatCard
         label="Net flow"

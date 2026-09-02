@@ -547,10 +547,20 @@ button {
 }
 
 .transaction-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
   text-align: right;
   font-weight: 700;
   font-size: 1rem;
   white-space: nowrap;
+}
+
+.transaction-amount-original {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .transaction-amount.income {
@@ -623,6 +633,7 @@ button {
 
   .transaction-amount {
     text-align: left;
+    align-items: flex-start;
   }
 
   .page {

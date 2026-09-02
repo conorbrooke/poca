@@ -24,11 +24,11 @@ import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
 import { CategoriesService } from "../spending/categories.service";
 import { TransfersService } from "../spending/transfers.service";
+import { FxService } from "../fx/fx.service";
 import {
   computeStats,
   connectionStatsFromRow,
   connectionStatsToDb,
-  isStatsMonthStale,
   mergeStats,
   syncDateFrom,
 } from "./stats";
@@ -95,6 +95,7 @@ export class BankService {
     private readonly prisma: PrismaService,
     private readonly categoriesService: CategoriesService,
     private readonly transfersService: TransfersService,
+    private readonly fx: FxService,
   ) {
     const applicationId = this.config.get<string>(
       "ENABLE_BANKING_APPLICATION_ID",
@@ -355,11 +356,15 @@ export class BankService {
       user.id,
       page.map((tx) => tx.id),
     );
+    const rates = await this.fx.getRates();
 
     return {
-      transactions: page.map((tx) => ({
+      transactions: page.map((tx) => {
+        const amount = toNumber(tx.amount);
+        return {
         id: tx.id,
-        amount: toNumber(tx.amount),
+        amount,
+        amountEur: this.fx.toEur(amount, tx.currency, rates),
         currency: tx.currency,
         description: tx.description,
         payeeLabel: tx.payeeLabel,
@@ -402,7 +407,8 @@ export class BankService {
             )
           : [],
         transfer: transferInfo.get(tx.id) ?? null,
-      })),
+      };
+      }),
       nextCursor:
         hasMore && last ? encodeCursor(last.bookedAt, last.id) : null,
     };
@@ -672,7 +678,7 @@ export class BankService {
   }): Promise<ConnectionStats> {
     if (
       connection.stats &&
-      !isStatsMonthStale(connection.stats.computedAt)
+      this.fx.isConvertedCacheFresh(connection.stats.computedAt)
     ) {
       return connectionStatsFromRow(connection.stats);
     }
@@ -687,11 +693,16 @@ export class BankService {
       where: {
         account: { bankConnectionId },
       },
-      select: { amount: true, bookedAt: true },
+      select: { amount: true, bookedAt: true, currency: true },
     });
 
+    const rates = await this.fx.getRates();
     const stats =
-      transactions.length > 0 ? computeStats(transactions) : EMPTY_STATS;
+      transactions.length > 0
+        ? computeStats(transactions, (amount, currency) =>
+            this.fx.toEur(amount, currency, rates),
+          )
+        : EMPTY_STATS;
 
     await this.prisma.connectionStats.upsert({
       where: { bankConnectionId },

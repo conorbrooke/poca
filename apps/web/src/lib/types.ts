@@ -37,6 +37,7 @@ export type DashboardBank = {
 export type DashboardTransaction = {
   id: string;
   amount: number;
+  amountEur: number;
   currency: string;
   description: string;
   payeeLabel: string | null;

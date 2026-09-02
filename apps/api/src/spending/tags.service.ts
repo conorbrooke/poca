@@ -11,6 +11,7 @@ import type {
 import { isSpendingCategoryKind } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
+import { FxService } from "../fx/fx.service";
 import { mapTag, toNumber } from "./mappers";
 import { resolveSpendingPeriod, roundMoney } from "./period";
 import { SpendingService } from "./spending.service";
@@ -20,6 +21,7 @@ export class TagsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly spendingService: SpendingService,
+    private readonly fx: FxService,
   ) {}
 
   async listTags(userId: string) {
@@ -91,7 +93,7 @@ export class TagsService {
         account: accountFilter,
         tags: { some: { tagId } },
       },
-      select: { categoryId: true, amount: true },
+      select: { categoryId: true, amount: true, currency: true },
     });
 
     const splits = await this.prisma.transactionSplit.findMany({
@@ -104,14 +106,32 @@ export class TagsService {
           account: accountFilter,
         },
       },
-      select: { categoryId: true, amount: true },
+      select: {
+        categoryId: true,
+        amount: true,
+        transaction: { select: { currency: true } },
+      },
     });
 
     const categories = await this.prisma.category.findMany({ where: { userId } });
     const categoryMap = new Map(categories.map((category) => [category.id, category]));
     const totals = new Map<string, { totalSpent: number; transactionCount: number }>();
+    const rates = await this.fx.getRates();
 
-    for (const row of [...unsplit, ...splits]) {
+    const rows = [
+      ...unsplit.map((row) => ({
+        categoryId: row.categoryId,
+        amount: row.amount,
+        currency: row.currency,
+      })),
+      ...splits.map((row) => ({
+        categoryId: row.categoryId,
+        amount: row.amount,
+        currency: row.transaction.currency,
+      })),
+    ];
+
+    for (const row of rows) {
       if (!row.categoryId) continue;
       const category = categoryMap.get(row.categoryId);
       if (!category || !isSpendingCategoryKind(category.kind)) continue;
@@ -119,7 +139,9 @@ export class TagsService {
         totalSpent: 0,
         transactionCount: 0,
       };
-      current.totalSpent += Math.abs(toNumber(row.amount));
+      current.totalSpent += Math.abs(
+        this.fx.toEur(toNumber(row.amount), row.currency, rates),
+      );
       current.transactionCount += 1;
       totals.set(row.categoryId, current);
     }
