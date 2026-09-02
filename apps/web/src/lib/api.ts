@@ -9,11 +9,21 @@ export function apiFetchHeaders(): HeadersInit {
 }
 
 function getApiBase(): string {
-  const base = process.env.NEXT_PUBLIC_API_URL;
-  if (!base) {
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+  if (!configured) {
     throw new Error("NEXT_PUBLIC_API_URL is not set");
   }
-  return base.replace(/\/$/, "");
+
+  // Vercel (HTTPS) cannot call http://localhost:3001. Same-origin proxy
+  // forwards to API_URL on the server (ngrok → local Nest).
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") {
+      return "/api/backend";
+    }
+  }
+
+  return configured.replace(/\/$/, "");
 }
 
 /** Browser-safe API path. Use /api/backend proxy on Vercel → ngrok to avoid CORS. */
