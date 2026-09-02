@@ -109,6 +109,8 @@ model Account {
   name             String
   iban             String?
   currency         String       @default("EUR")
+  accountType      String?
+  product          String?
   provider         BankProvider @default(MANUAL)
   currentBalance   Decimal      @default(0) @db.Decimal(14, 2)
   isActive         Boolean      @default(true)

@@ -60,8 +60,7 @@ export function computeStats(transactions: TransactionRecord[]): ConnectionStats
 
 export function mergeStats(
   statsList: ConnectionStats[],
-  totalBalance?: number,
-): ConnectionStats & { totalBalance?: number } {
+): ConnectionStats {
   const merged = statsList.reduce<ConnectionStats>(
     (acc, stats) => ({
       totalIncome: roundMoney(acc.totalIncome + stats.totalIncome),
@@ -92,10 +91,6 @@ export function mergeStats(
       ? totalVolume / merged.transactionCount
       : 0,
   );
-
-  if (totalBalance !== undefined) {
-    return { ...merged, totalBalance: roundMoney(totalBalance) };
-  }
 
   return merged;
 }

@@ -9,9 +9,10 @@ export {
   isLegacySyntheticExternalId,
 } from "./transaction-id.js";
 export {
-  encodeInstitutionId,
-  parseInstitutionId,
-} from "./types.js";
+  buildAccountName,
+  pickAccountBalance,
+  toStoredAccount,
+} from "./account.js";
 export type {
   BankConnectProvider,
   BankLinkResult,

@@ -6,6 +6,10 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { EnableBankingProvider } from "@poca/bank-connect";
 import { EnableBankingApiError } from "@poca/bank-connect";
+import {
+  pickAccountBalance,
+  toStoredAccount,
+} from "@poca/bank-connect";
 import type { BankConnectProvider, ExternalTransaction } from "@poca/bank-connect";
 import { BankConnectionStatus, BankProvider, SyncJobStatus } from "@poca/db";
 import type {
@@ -15,6 +19,7 @@ import type {
   SyncTransactionsInput,
   TransactionsQuery,
 } from "@poca/shared";
+import { sumBalancesByCurrency } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
 import { CategoriesService } from "../spending/categories.service";
@@ -25,7 +30,6 @@ import {
   connectionStatsToDb,
   isStatsMonthStale,
   mergeStats,
-  roundMoney,
   syncDateFrom,
 } from "./stats";
 
@@ -36,6 +40,20 @@ type TransactionCursor = {
 
 function toNumber(value: { toString(): string }): number {
   return parseFloat(value.toString());
+}
+
+function compareDashboardAccounts(
+  left: { currency: string; accountType: string | null; name: string },
+  right: { currency: string; accountType: string | null; name: string },
+): number {
+  const leftHome = left.currency === "EUR" ? 0 : 1;
+  const rightHome = right.currency === "EUR" ? 0 : 1;
+  if (leftHome !== rightHome) return leftHome - rightHome;
+  const typeRank = (type: string | null) =>
+    type === "CACC" ? 0 : type === "SVGS" ? 1 : 2;
+  const typeDiff = typeRank(left.accountType) - typeRank(right.accountType);
+  if (typeDiff !== 0) return typeDiff;
+  return left.name.localeCompare(right.name);
 }
 
 function encodeCursor(bookedAt: Date, id: string): string {
@@ -196,14 +214,18 @@ export class BankService {
       lastSyncedAt: connection.lastSyncedAt,
       lastError: connection.lastError,
       createdAt: connection.createdAt,
-      accounts: connection.accounts.map((account) => ({
-        id: account.id,
-        name: account.name,
-        iban: account.iban,
-        currentBalance: toNumber(account.currentBalance),
-        currency: account.currency,
-        transactionCount: account._count.transactions,
-      })),
+      accounts: connection.accounts
+        .map((account) => ({
+          id: account.id,
+          name: account.name,
+          iban: account.iban,
+          currentBalance: toNumber(account.currentBalance),
+          currency: account.currency,
+          accountType: account.accountType,
+          product: account.product,
+          transactionCount: account._count.transactions,
+        }))
+        .sort(compareDashboardAccounts),
     }));
   }
 
@@ -234,15 +256,24 @@ export class BankService {
 
     const dashboardBanks = [];
     const statsList: ConnectionStats[] = [];
-    let overallBalance = 0;
+    const overallAccounts: Array<{ currentBalance: number; currency: string }> = [];
 
     for (const connection of connections) {
       const stats = await this.ensureConnectionStats(connection);
-      const totalBalance = connection.accounts.reduce(
-        (sum, account) => sum + toNumber(account.currentBalance),
-        0,
-      );
-      overallBalance += totalBalance;
+      const accounts = connection.accounts
+        .map((account) => ({
+          id: account.id,
+          name: account.name,
+          iban: account.iban,
+          currentBalance: toNumber(account.currentBalance),
+          currency: account.currency,
+          accountType: account.accountType,
+          product: account.product,
+          transactionCount: account._count.transactions,
+        }))
+        .sort(compareDashboardAccounts);
+      const balancesByCurrency = sumBalancesByCurrency(accounts);
+      overallAccounts.push(...accounts);
       statsList.push(stats);
 
       dashboardBanks.push({
@@ -252,15 +283,8 @@ export class BankService {
         status: connection.status,
         lastSyncedAt: connection.lastSyncedAt,
         lastError: connection.lastError,
-        totalBalance: roundMoney(totalBalance),
-        accounts: connection.accounts.map((account) => ({
-          id: account.id,
-          name: account.name,
-          iban: account.iban,
-          currentBalance: toNumber(account.currentBalance),
-          currency: account.currency,
-          transactionCount: account._count.transactions,
-        })),
+        balancesByCurrency,
+        accounts,
         stats,
       });
     }
@@ -268,7 +292,10 @@ export class BankService {
     return {
       connections: allConnections,
       banks: dashboardBanks,
-      stats: mergeStats(statsList, overallBalance),
+      stats: {
+        ...mergeStats(statsList),
+        balancesByCurrency: sumBalancesByCurrency(overallAccounts),
+      },
     };
   }
 
@@ -512,10 +539,11 @@ export class BankService {
         const externalAccount =
           await this.provider.getAccount(externalAccountId);
         const balances = await this.provider.getBalances(externalAccountId);
-        const currentBalance =
-          balances.find((b) => b.currency === "EUR")?.amount ??
-          balances[0]?.amount ??
-          0;
+        const stored = toStoredAccount(externalAccount);
+        const currentBalance = pickAccountBalance(
+          balances,
+          stored.currency,
+        ).amount;
 
         const account = await this.prisma.account.upsert({
           where: {
@@ -528,15 +556,20 @@ export class BankService {
             userId: user.id,
             bankConnectionId,
             externalId: externalAccountId,
-            name: externalAccount.name ?? "Bank account",
-            iban: externalAccount.iban,
-            currency: externalAccount.currency ?? "EUR",
+            name: stored.name,
+            iban: stored.iban,
+            currency: stored.currency,
+            accountType: stored.accountType,
+            product: stored.product,
             provider: BankProvider.ENABLE_BANKING,
             currentBalance,
           },
           update: {
-            name: externalAccount.name ?? "Bank account",
-            iban: externalAccount.iban,
+            name: stored.name,
+            iban: stored.iban,
+            currency: stored.currency,
+            accountType: stored.accountType,
+            product: stored.product,
             currentBalance,
           },
         });

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "../../../lib/api";
-import { formatMoney, formatRelativeSync } from "../../../lib/format";
+import { formatMoneyList, formatRelativeSync } from "../../../lib/format";
 import type {
   BankConnection,
   Institution,
@@ -13,6 +13,8 @@ import type {
 import {
   SYNC_DEFAULT_DAYS,
   SYNC_RANGE_OPTIONS,
+  accountTypeLabel,
+  sumBalancesByCurrency,
 } from "@poca/shared";
 
 function statusClass(status: string): string {
@@ -226,10 +228,7 @@ export function SyncClient() {
                 syncingId === connection.id ||
                 removingId === connection.id ||
                 resumingId === connection.id;
-              const balance = connection.accounts.reduce(
-                (sum, account) => sum + account.currentBalance,
-                0,
-              );
+              const balances = sumBalancesByCurrency(connection.accounts);
               const txCount = connection.accounts.reduce(
                 (sum, account) => sum + account.transactionCount,
                 0,
@@ -252,9 +251,19 @@ export function SyncClient() {
                         </span>
                       </div>
                       <p className="bank-meta">
-                        {formatMoney(balance)} · {txCount} transactions ·{" "}
+                        {formatMoneyList(balances)} · {txCount} transactions ·{" "}
                         {formatRelativeSync(connection.lastSyncedAt)}
                       </p>
+                      {connection.accounts.length > 1 ? (
+                        <p className="bank-meta">
+                          {connection.accounts
+                            .map(
+                              (account) =>
+                                `${accountTypeLabel(account.accountType)} ${account.currency}`,
+                            )
+                            .join(" · ")}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
 

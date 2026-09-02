@@ -1,5 +1,5 @@
 import type { DashboardStats } from "../lib/types";
-import { formatMoney } from "../lib/format";
+import { formatMoney, formatMoneyList } from "../lib/format";
 
 type StatCardProps = {
   label: string;
@@ -26,12 +26,16 @@ type StatsGridProps = {
 export function StatsGrid({ stats, showBalance = true }: StatsGridProps) {
   return (
     <div className="stats-grid">
-      {showBalance && stats.totalBalance !== undefined ? (
+      {showBalance ? (
         <StatCard
           label="Current balance"
-          value={formatMoney(stats.totalBalance)}
+          value={formatMoneyList(stats.balancesByCurrency ?? [])}
           tone="balance"
-          hint="Across linked accounts"
+          hint={
+            (stats.balancesByCurrency?.length ?? 0) > 1
+              ? "Each currency shown separately — not converted"
+              : "Across linked accounts"
+          }
         />
       ) : null}
       <StatCard

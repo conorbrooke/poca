@@ -209,14 +209,20 @@ export class EnableBankingProvider implements BankConnectProvider {
     const data = await this.request<{
       account_id?: { iban?: string };
       name?: string;
+      details?: string;
       currency?: string;
+      cash_account_type?: string;
+      product?: string;
     }>(`/accounts/${accountId}/details`);
 
     return {
       id: accountId,
       iban: data.account_id?.iban,
       name: data.name,
+      details: data.details,
       currency: data.currency ?? "EUR",
+      cashAccountType: data.cash_account_type,
+      product: data.product,
     };
   }
 
@@ -224,12 +230,14 @@ export class EnableBankingProvider implements BankConnectProvider {
     const data = await this.request<{
       balances?: Array<{
         balance_amount?: { currency?: string; amount?: string };
+        balance_type?: string;
       }>;
     }>(`/accounts/${accountId}/balances`);
 
     return (data.balances ?? []).map((balance) => ({
       amount: parseFloat(balance.balance_amount?.amount ?? "0"),
       currency: balance.balance_amount?.currency ?? "EUR",
+      balanceType: balance.balance_type,
     }));
   }
 

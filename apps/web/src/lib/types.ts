@@ -1,7 +1,7 @@
-import type { TransactionTransferInfo } from "@poca/shared";
+import type { CurrencyAmount, TransactionTransferInfo } from "@poca/shared";
 
 export type DashboardStats = {
-  totalBalance?: number;
+  balancesByCurrency?: CurrencyAmount[];
   totalIncome: number;
   totalSpent: number;
   netFlow: number;
@@ -17,6 +17,8 @@ export type DashboardAccount = {
   iban: string | null;
   currentBalance: number;
   currency: string;
+  accountType: string | null;
+  product: string | null;
   transactionCount: number;
 };
 
@@ -27,7 +29,7 @@ export type DashboardBank = {
   status: string;
   lastSyncedAt: string | null;
   lastError: string | null;
-  totalBalance: number;
+  balancesByCurrency: CurrencyAmount[];
   accounts: DashboardAccount[];
   stats: DashboardStats;
 };

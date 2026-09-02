@@ -15,6 +15,7 @@ import type {
 import {
   SYNC_DEFAULT_DAYS,
   SYNC_RANGE_OPTIONS,
+  accountTypeLabel,
 } from "@poca/shared";
 
 export function DashboardClient() {
@@ -160,7 +161,7 @@ export function DashboardClient() {
   }
 
   const stats = activeBank
-    ? { ...activeBank.stats, totalBalance: activeBank.totalBalance }
+    ? { ...activeBank.stats, balancesByCurrency: activeBank.balancesByCurrency }
     : data.stats;
   const showBalance = true;
   const totalTransactionCount = stats.transactionCount;
@@ -261,13 +262,21 @@ export function DashboardClient() {
               <div className="bank-grid">
                 {activeBank.accounts.map((account) => (
                   <div key={account.id} className="bank-card connected">
-                    <p className="bank-name">{account.name}</p>
+                    <div className="bank-card-title-row">
+                      <p className="bank-name">{account.name}</p>
+                      {account.accountType ? (
+                        <span className="status-badge">
+                          {accountTypeLabel(account.accountType)}
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="stat-value balance" style={{ fontSize: "1.125rem" }}>
                       {formatMoney(account.currentBalance, account.currency)}
                     </p>
                     <p className="bank-meta">
-                      {account.iban ?? "No IBAN"} · {account.transactionCount}{" "}
-                      transactions
+                      {account.currency}
+                      {account.iban ? ` · ${account.iban}` : ""} ·{" "}
+                      {account.transactionCount} transactions
                     </p>
                   </div>
                 ))}

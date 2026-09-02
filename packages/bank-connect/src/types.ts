@@ -34,11 +34,15 @@ export interface ExternalAccount {
   iban?: string;
   name?: string;
   currency?: string;
+  cashAccountType?: string;
+  product?: string;
+  details?: string;
 }
 
 export interface ExternalBalance {
   amount: number;
   currency: string;
+  balanceType?: string;
 }
 
 export interface ExternalTransaction {

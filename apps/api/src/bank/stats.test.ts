@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sumBalancesByCurrency } from "@poca/shared";
 import { syncDateFrom } from "./stats.js";
 
 describe("syncDateFrom", () => {
@@ -23,5 +24,20 @@ describe("syncDateFrom", () => {
     expected.setUTCHours(0, 0, 0, 0);
 
     expect(parsed.toISOString()).toBe(expected.toISOString());
+  });
+});
+
+describe("sumBalancesByCurrency", () => {
+  it("does not add TRY into EUR", () => {
+    expect(
+      sumBalancesByCurrency([
+        { currentBalance: 0.3, currency: "EUR" },
+        { currentBalance: 0.01, currency: "EUR" },
+        { currentBalance: 2, currency: "TRY" },
+      ]),
+    ).toEqual([
+      { currency: "EUR", amount: 0.31 },
+      { currency: "TRY", amount: 2 },
+    ]);
   });
 });

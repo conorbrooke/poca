@@ -17,6 +17,17 @@ export function formatMoney(
   return formatted;
 }
 
+export function formatMoneyList(
+  balances: Array<{ amount: number; currency: string }>,
+): string {
+  if (balances.length === 0) {
+    return formatMoney(0);
+  }
+  return balances
+    .map((balance) => formatMoney(balance.amount, balance.currency))
+    .join(" · ");
+}
+
 export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("en-IE", {
     day: "numeric",
