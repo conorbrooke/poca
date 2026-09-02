@@ -29,6 +29,7 @@ export const spendingQuerySchema = z.object({
   range: rangeEnum.default("month"),
   bankConnectionId: z.string().min(1).optional(),
   tagIds: z.preprocess(parseTagIds, z.array(z.string().min(1)).optional()),
+  flow: z.enum(["out", "in"]).default("out"),
 });
 
 export type SpendingQuery = z.infer<typeof spendingQuerySchema>;
@@ -93,6 +94,7 @@ export const spendingTransactionsQuerySchema = z.object({
   tagIds: z.preprocess(parseTagIds, z.array(z.string().min(1)).optional()),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().min(1).optional(),
+  flow: z.enum(["out", "in"]).default("out"),
 });
 
 export type SpendingTransactionsQuery = z.infer<
@@ -223,12 +225,14 @@ export type SpendingSummaryResponse = {
   range: SpendingRangeId;
   periodStart: string;
   periodEnd: string;
+  flow: "out" | "in";
   totalSpent: number;
   totalTransferred: number;
   transferTransactionCount: number;
   transactionCount: number;
   categories: SpendingCategorySummary[];
   transfersCategory: SpendingCategorySummary | null;
+  reviewCategories: SpendingCategorySummary[];
   cached: boolean;
 };
 

@@ -713,6 +713,10 @@ button {
   margin-top: 0.25rem;
 }
 
+.spending-total.income {
+  color: var(--income);
+}
+
 .spending-movements-card {
   display: flex;
   align-items: center;

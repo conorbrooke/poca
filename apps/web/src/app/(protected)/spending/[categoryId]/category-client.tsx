@@ -25,6 +25,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const bankConnectionId = searchParams.get("bank") ?? undefined;
   const payeeFilter = searchParams.get("payee") ?? undefined;
   const tagIds = searchParams.get("tagIds") ?? undefined;
+  const flow = searchParams.get("flow") === "in" ? "in" : "out";
 
   const [detail, setDetail] = useState<CategoryDetailResponse | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -41,11 +42,11 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const [deletingCategory, setDeletingCategory] = useState(false);
 
   const metaParams = useCallback(() => {
-    const params = new URLSearchParams({ range });
+    const params = new URLSearchParams({ range, flow });
     if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
     if (tagIds) params.set("tagIds", tagIds);
     return params;
-  }, [range, bankConnectionId, tagIds]);
+  }, [range, flow, bankConnectionId, tagIds]);
 
   const transactionParams = useCallback(() => {
     const params = metaParams();
@@ -54,7 +55,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   }, [metaParams, payeeFilter]);
 
   function setPayeeFilter(nextPayee: string | null) {
-    const params = new URLSearchParams({ range });
+    const params = new URLSearchParams({ range, flow });
     if (bankConnectionId) params.set("bank", bankConnectionId);
     if (tagIds) params.set("tagIds", tagIds);
     if (nextPayee) params.set("payee", nextPayee);
@@ -204,7 +205,10 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
 
   const backParams = new URLSearchParams({ range });
   if (bankConnectionId) backParams.set("bank", bankConnectionId);
-  const backHref = `/spending?${backParams.toString()}`;
+  const backHref =
+    flow === "in"
+      ? `/income?${backParams.toString()}`
+      : `/spending?${backParams.toString()}`;
 
   const isSystemCategory = detail.category.isSystem;
 
@@ -215,7 +219,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
       {error ? <div className="alert alert-error">{error}</div> : null}
 
       <Link href={backHref} className="back-link">
-        ← Back to spending
+        {flow === "in" ? "← Back to income" : "← Back to spending"}
       </Link>
 
       <div
@@ -231,14 +235,24 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
           </span>
           <div>
             {isTransferCategory ? (
-              <p className="page-eyebrow">Between your accounts</p>
+              <p className="page-eyebrow">
+                {flow === "in" ? "Money in, not earned" : "Between your accounts"}
+              </p>
+            ) : flow === "in" && detail.category.kind === "INCOME" ? (
+              <p className="page-eyebrow">Income</p>
+            ) : flow === "in" ? (
+              <p className="page-eyebrow">Incoming — recategorise</p>
             ) : null}
             <h2 className="spending-total">{nameValue || detail.category.name}</h2>
             <p className="bank-meta">
               {formatMoney(detail.totalSpent)} · {detail.transactionCount}{" "}
               {isTransferCategory ? "movements" : "transactions"} ·{" "}
               {SPENDING_RANGES.find((r) => r.id === range)?.label ?? range}
-              {isTransferCategory ? " · excluded from spending" : ""}
+              {isTransferCategory
+                ? flow === "in"
+                  ? " · excluded from earned income"
+                  : " · excluded from spending"
+                : ""}
             </p>
           </div>
         </div>

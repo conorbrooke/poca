@@ -8,6 +8,10 @@ export function isSpendingCategoryKind(kind: CategoryKind): boolean {
   return kind === "EXPENSE";
 }
 
+export function isIncomeCategoryKind(kind: CategoryKind): boolean {
+  return kind === "INCOME";
+}
+
 export const linkTransferSchema = z.object({
   outTransactionId: z.string().min(1),
   inTransactionId: z.string().min(1),

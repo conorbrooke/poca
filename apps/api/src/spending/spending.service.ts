@@ -15,7 +15,7 @@ import type {
   UnsplitTransactionInput,
   UpdateSplitInput,
 } from "@poca/shared";
-import { isSpendingCategoryKind } from "@poca/shared";
+import { isIncomeCategoryKind, isSpendingCategoryKind } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
 import { CategoriesService } from "./categories.service";
@@ -26,6 +26,12 @@ import { TransfersService } from "./transfers.service";
 const tagInclude = {
   tag: { select: { id: true, name: true, color: true, icon: true } },
 } as const;
+
+type CashFlow = "in" | "out";
+
+function amountFilter(flow: CashFlow): Prisma.DecimalFilter {
+  return flow === "in" ? { gt: 0 } : { lt: 0 };
+}
 
 @Injectable()
 export class SpendingService {
@@ -43,8 +49,9 @@ export class SpendingService {
     const { periodStart, periodEnd } = resolveSpendingPeriod(query.range);
     const bankConnectionId = query.bankConnectionId ?? null;
     const tagIds = query.tagIds;
+    const flow = query.flow ?? "out";
 
-    if (!tagIds?.length) {
+    if (flow === "out" && !tagIds?.length) {
       const cached = await this.prisma.categoryPeriodStat.findMany({
         where: {
           userId,
@@ -68,6 +75,7 @@ export class SpendingService {
             transactionCount: row.transactionCount,
           })),
           true,
+          "out",
         );
       }
     }
@@ -77,6 +85,7 @@ export class SpendingService {
       query.range,
       bankConnectionId,
       tagIds,
+      flow,
     );
   }
 
@@ -95,12 +104,14 @@ export class SpendingService {
       summary.categories.find((item) => item.id === categoryId) ??
       (summary.transfersCategory?.id === categoryId
         ? summary.transfersCategory
-        : undefined);
+        : undefined) ??
+      summary.reviewCategories.find((item) => item.id === categoryId);
     const { periodStart, periodEnd } = resolveSpendingPeriod(query.range);
     const bankConnectionId = query.bankConnectionId ?? null;
+    const flow = query.flow ?? "out";
 
     let payees =
-      !query.tagIds?.length
+      flow === "out" && !query.tagIds?.length
         ? (
             await this.prisma.categoryPeriodStat.findFirst({
               where: {
@@ -129,6 +140,7 @@ export class SpendingService {
         periodEnd,
         bankConnectionId,
         query.tagIds,
+        flow,
       );
     }
 
@@ -177,11 +189,13 @@ export class SpendingService {
       ...(query.bankConnectionId ? { bankConnectionId: query.bankConnectionId } : {}),
     };
     const tagFilter = this.tagAndFilter(query.tagIds);
+    const flow = query.flow ?? "out";
+    const amount = amountFilter(flow);
 
     const unsplit = await this.prisma.transaction.findMany({
       where: {
         isSplit: false,
-        amount: { lt: 0 },
+        amount,
         bookedAt: { gte: periodStart, lte: periodEnd },
         account: accountWhere,
         ...(categoryId ? { categoryId } : {}),
@@ -203,7 +217,7 @@ export class SpendingService {
 
     const splits = await this.prisma.transactionSplit.findMany({
       where: {
-        amount: { lt: 0 },
+        amount,
         ...(categoryId ? { categoryId } : {}),
         ...(query.payeeLabel ? { payeeLabel: query.payeeLabel } : {}),
         ...tagFilter,
@@ -443,10 +457,11 @@ export class SpendingService {
     userId: string,
     range: SpendingRangeId,
     bankConnectionId: string | null,
-    tagIds?: string[],
+    tagIds: string[] | undefined,
+    flow: CashFlow,
   ): Promise<SpendingSummaryResponse> {
     const { periodStart, periodEnd } = resolveSpendingPeriod(range);
-    const persistCache = !tagIds?.length;
+    const persistCache = flow === "out" && !tagIds?.length;
 
     if (persistCache) {
       await this.prisma.categoryPeriodStat.deleteMany({
@@ -462,11 +477,11 @@ export class SpendingService {
 
     const allGrouped = await this.groupCategoryTotals(
       userId,
-      range,
       bankConnectionId,
       tagIds,
       periodStart,
       periodEnd,
+      flow,
     );
 
     if (persistCache) {
@@ -503,27 +518,29 @@ export class SpendingService {
         transactionCount: row.transactionCount,
       })),
       false,
+      flow,
     );
   }
 
   private async groupCategoryTotals(
     userId: string,
-    range: SpendingRangeId,
     bankConnectionId: string | null,
     tagIds: string[] | undefined,
     periodStart: Date,
     periodEnd: Date,
+    flow: CashFlow,
   ) {
     const accountFilter: Prisma.AccountWhereInput = {
       userId,
       ...(bankConnectionId ? { bankConnectionId } : {}),
     };
     const tagFilter = this.tagAndFilter(tagIds);
+    const amount = amountFilter(flow);
 
     const unsplit = await this.prisma.transaction.findMany({
       where: {
         isSplit: false,
-        amount: { lt: 0 },
+        amount,
         bookedAt: { gte: periodStart, lte: periodEnd },
         account: accountFilter,
         categoryId: { not: null },
@@ -534,7 +551,7 @@ export class SpendingService {
 
     const splits = await this.prisma.transactionSplit.findMany({
       where: {
-        amount: { lt: 0 },
+        amount,
         ...tagFilter,
         transaction: {
           isSplit: true,
@@ -621,19 +638,25 @@ export class SpendingService {
       transactionCount: number;
     }>,
     cached: boolean,
+    flow: CashFlow,
   ): SpendingSummaryResponse {
-    const expenseRows = rows.filter((row) =>
-      isSpendingCategoryKind(row.category.kind),
-    );
     const transferRows = rows.filter((row) => row.category.kind === "TRANSFER");
+    const primaryRows =
+      flow === "in"
+        ? rows.filter((row) => isIncomeCategoryKind(row.category.kind))
+        : rows.filter((row) => isSpendingCategoryKind(row.category.kind));
+    const reviewRows =
+      flow === "in"
+        ? rows.filter((row) => isSpendingCategoryKind(row.category.kind))
+        : [];
 
     const totalSpent = roundMoney(
-      expenseRows.reduce((sum, row) => sum + row.totalSpent, 0),
+      primaryRows.reduce((sum, row) => sum + row.totalSpent, 0),
     );
     const totalTransferred = roundMoney(
       transferRows.reduce((sum, row) => sum + row.totalSpent, 0),
     );
-    const transactionCount = expenseRows.reduce(
+    const transactionCount = primaryRows.reduce(
       (sum, row) => sum + row.transactionCount,
       0,
     );
@@ -669,17 +692,36 @@ export class SpendingService {
             }
           : null;
 
+    const reviewTotal = reviewRows.reduce((sum, row) => sum + row.totalSpent, 0);
+
     return {
       range,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
+      flow,
       totalSpent,
       totalTransferred,
       transferTransactionCount,
       transactionCount,
       cached,
       transfersCategory,
-      categories: expenseRows
+      reviewCategories: reviewRows
+        .sort((a, b) => b.totalSpent - a.totalSpent)
+        .map((row) => ({
+          id: row.category.id,
+          name: row.category.name,
+          color: row.category.color,
+          icon: row.category.icon,
+          isSystem: row.category.isSystem,
+          kind: row.category.kind,
+          totalSpent: row.totalSpent,
+          transactionCount: row.transactionCount,
+          share:
+            reviewTotal > 0
+              ? roundMoney((row.totalSpent / reviewTotal) * 100)
+              : 0,
+        })),
+      categories: primaryRows
         .sort((a, b) => b.totalSpent - a.totalSpent)
         .map((row) => ({
           id: row.category.id,
@@ -704,19 +746,21 @@ export class SpendingService {
     periodStart: Date,
     periodEnd: Date,
     bankConnectionId: string | null,
-    tagIds?: string[],
+    tagIds: string[] | undefined,
+    flow: CashFlow = "out",
   ) {
     const accountFilter: Prisma.AccountWhereInput = {
       userId,
       ...(bankConnectionId ? { bankConnectionId } : {}),
     };
     const tagFilter = this.tagAndFilter(tagIds);
+    const amount = amountFilter(flow);
 
     const unsplit = await this.prisma.transaction.findMany({
       where: {
         isSplit: false,
         categoryId,
-        amount: { lt: 0 },
+        amount,
         bookedAt: { gte: periodStart, lte: periodEnd },
         account: accountFilter,
         ...tagFilter,
@@ -726,7 +770,7 @@ export class SpendingService {
     const splits = await this.prisma.transactionSplit.findMany({
       where: {
         categoryId,
-        amount: { lt: 0 },
+        amount,
         ...tagFilter,
         transaction: {
           isSplit: true,

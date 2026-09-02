@@ -177,7 +177,7 @@ export function SelectableTransactionList({
                     {tx.splitOutOfBalance ? <span>Out of balance</span> : null}
                   </div>
                 </div>
-                <p className="transaction-amount expense">
+                <p className={`transaction-amount ${tx.amount >= 0 ? "income" : "expense"}`}>
                   {formatMoney(tx.amount, tx.currency, { signed: true })}
                 </p>
               </button>

@@ -93,6 +93,17 @@ export class SpendingController {
     return { updatedCount: updated };
   }
 
+  @Get("activity")
+  async listActivity(@Query() query: unknown) {
+    const input = parseOrThrow(
+      spendingTransactionsQuerySchema,
+      query,
+      "Spending transactions query",
+    );
+    const userId = await this.demoUserId();
+    return this.spendingService.listAllocatableTransactions(userId, input);
+  }
+
   @Get("tags")
   async listTags() {
     const userId = await this.demoUserId();
