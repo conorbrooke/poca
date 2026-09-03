@@ -1745,6 +1745,76 @@ button {
   margin-bottom: 1.25rem;
 }
 
+.hero-net-worth {
+  margin-bottom: 1.25rem;
+}
+
+.hero-net-worth-value {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.1;
+  margin: 0.15rem 0 0.35rem;
+}
+
+.hero-net-worth-delta {
+  color: var(--muted);
+  font-weight: 650;
+  margin: 0 0 0.35rem;
+}
+
+.hero-net-worth-delta.is-up {
+  color: var(--income, #34d399);
+}
+
+.hero-net-worth-delta.is-down {
+  color: var(--expense, #f87171);
+}
+
+.balance-sheet {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.sheet-row,
+.sheet-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+}
+
+.sheet-row:last-of-type {
+  border-bottom: none;
+}
+
+.sheet-row-empty {
+  opacity: 0.55;
+}
+
+.sheet-row-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.sheet-total {
+  border-bottom: none;
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  font-weight: 750;
+}
+
+@media (max-width: 720px) {
+  .balance-sheet {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 900px) {
   .app-nav-links {
     display: none;

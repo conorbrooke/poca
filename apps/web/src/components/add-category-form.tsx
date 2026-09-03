@@ -18,6 +18,8 @@ export function AddCategoryForm({
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("");
   const [kind, setKind] = useState<CategoryKind>(defaultKind);
+  const [isBill, setIsBill] = useState(false);
+  const [isEssential, setIsEssential] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +37,15 @@ export function AddCategoryForm({
         body: JSON.stringify({
           name: trimmed,
           kind,
+          isBill: kind === "EXPENSE" ? isBill : false,
+          isEssential: kind === "EXPENSE" && isBill ? isEssential : false,
           ...(icon.trim() ? { icon: icon.trim() } : {}),
         }),
       });
       setName("");
       setIcon("");
       setKind(defaultKind);
+      setIsBill(false);
       onCreated(created);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create category");
@@ -78,7 +83,14 @@ export function AddCategoryForm({
           placeholder="🏷️"
         />
       </label>
-      <CategoryKindFields value={kind} onChange={setKind} />
+      <CategoryKindFields
+        value={kind}
+        onChange={setKind}
+        isBill={isBill}
+        isEssential={isEssential}
+        onBillChange={setIsBill}
+        onEssentialChange={setIsEssential}
+      />
       {error ? <p className="alert alert-error">{error}</p> : null}
       <button
         type="submit"

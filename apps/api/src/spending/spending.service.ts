@@ -165,6 +165,8 @@ export class SpendingService {
         color: category.color,
         icon: category.icon,
         isSystem: category.isSystem,
+        isBill: category.isBill,
+        isEssential: category.isEssential,
         kind: category.kind,
       },
       range: period.kind,
@@ -666,6 +668,7 @@ export class SpendingService {
         color: string;
         icon: string | null;
         isSystem: boolean;
+        isBill?: boolean;
         kind: import("@poca/db").CategoryKind;
       };
       totalSpent: number;
@@ -707,6 +710,7 @@ export class SpendingService {
         color: row.category.color,
         icon: row.category.icon,
         isSystem: row.category.isSystem,
+        isBill: row.category.isBill,
         kind: row.category.kind,
         totalSpent: row.totalSpent,
         transactionCount: row.transactionCount,
@@ -742,6 +746,7 @@ export class SpendingService {
           color: row.category.color,
           icon: row.category.icon,
           isSystem: row.category.isSystem,
+          isBill: row.category.isBill,
           kind: row.category.kind,
           totalSpent: row.totalSpent,
           transactionCount: row.transactionCount,
@@ -758,6 +763,7 @@ export class SpendingService {
           color: row.category.color,
           icon: row.category.icon,
           isSystem: row.category.isSystem,
+          isBill: row.category.isBill,
           kind: row.category.kind,
           totalSpent: row.totalSpent,
           transactionCount: row.transactionCount,

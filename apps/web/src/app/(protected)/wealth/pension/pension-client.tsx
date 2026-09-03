@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { IRISH_WEALTH_NOTES, PENSION_KINDS } from "@poca/shared";
+import { useEffect, useMemo, useState } from "react";
+import {
+  IRISH_WEALTH_NOTES,
+  MYFUTUREFUND_2026,
+  PENSION_KIND_OPTIONS,
+  myFutureFundMonthlyFromGross,
+} from "@poca/shared";
 import { apiFetch } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
 
@@ -10,16 +15,39 @@ type Pension = {
   name: string;
   currentValue: number;
   pensionKind: string | null;
-  employerMatchAnnual: number | null;
+  employeeContributionMonthly: number | null;
+  employerContributionMonthly: number | null;
+  stateContributionMonthly: number | null;
+  monthlyInflow: number;
 };
 
 export function PensionClient() {
   const [items, setItems] = useState<Pension[]>([]);
-  const [name, setName] = useState("Occupational pension");
-  const [kind, setKind] = useState("PRSA");
+  const [name, setName] = useState("MyFutureFund");
+  const [kind, setKind] = useState("MYFUTUREFUND");
   const [value, setValue] = useState("");
-  const [match, setMatch] = useState("");
+  const [gross, setGross] = useState("");
+  const [employee, setEmployee] = useState("");
+  const [employer, setEmployer] = useState("");
+  const [stateTopUp, setStateTopUp] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const kindOption = PENSION_KIND_OPTIONS.find((item) => item.id === kind);
+
+  const preview = useMemo(() => {
+    const grossMonthly = Number(gross);
+    if (kind === "MYFUTUREFUND" && grossMonthly > 0) {
+      return myFutureFundMonthlyFromGross(grossMonthly);
+    }
+    return null;
+  }, [gross, kind]);
+
+  useEffect(() => {
+    if (!preview) return;
+    setEmployee(String(preview.employee));
+    setEmployer(String(preview.employer));
+    setStateTopUp(String(preview.state));
+  }, [preview]);
 
   async function reload() {
     setItems(await apiFetch<Pension[]>("/wealth/pensions"));
@@ -41,27 +69,50 @@ export function PensionClient() {
           name,
           side: "ASSET",
           class: "PENSION",
-          currentValue: Number(value),
+          currentValue: Number(value) || 0,
           pensionKind: kind,
-          employerMatchAnnual: match === "" ? null : Number(match),
+          employeeContributionMonthly: employee === "" ? null : Number(employee),
+          employerContributionMonthly: employer === "" ? null : Number(employer),
+          stateContributionMonthly: stateTopUp === "" ? null : Number(stateTopUp),
         }),
       });
       setValue("");
-      setMatch("");
+      setGross("");
+      setEmployee("");
+      setEmployer("");
+      setStateTopUp("");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save pension");
     }
   }
 
+  const totalMonthly = items.reduce((sum, item) => sum + item.monthlyInflow, 0);
+  const totalPots = items.reduce((sum, item) => sum + item.currentValue, 0);
+
   return (
     <div>
       {error ? <div className="alert alert-error">{error}</div> : null}
       <div className="card" style={{ marginBottom: "1rem" }}>
-        <p>{IRISH_WEALTH_NOTES.pension}</p>
+        <h2 className="section-title">Irish pension tracker</h2>
+        <p className="bank-meta" style={{ maxWidth: "62ch" }}>
+          {IRISH_WEALTH_NOTES.pension}{" "}
+          <a href="https://myfuturefund.ie/" target="_blank" rel="noreferrer">
+            myfuturefund.ie
+          </a>
+        </p>
+        <p className="bank-meta" style={{ marginTop: "0.75rem" }}>
+          Pots {formatMoney(totalPots)} · going in {formatMoney(totalMonthly)}/month
+        </p>
       </div>
       <div className="card" style={{ marginBottom: "1rem" }}>
         <h2 className="section-title">Add a pot</h2>
+        <p className="bank-meta" style={{ marginBottom: "0.75rem", maxWidth: "62ch" }}>
+          {kindOption?.hint}
+          {kind === "MYFUTUREFUND"
+            ? ` 2026 rates: you ${(MYFUTUREFUND_2026.employeeRate * 100).toFixed(1)}%, employer ${(MYFUTUREFUND_2026.employerRate * 100).toFixed(1)}%, State ${(MYFUTUREFUND_2026.stateRate * 100).toFixed(1)}% of gross.`
+            : ""}
+        </p>
         <div className="tag-chip-row">
           <input
             className="login-input"
@@ -71,27 +122,59 @@ export function PensionClient() {
           <select
             className="login-input"
             value={kind}
-            onChange={(event) => setKind(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              setKind(next);
+              if (next === "MYFUTUREFUND") setName("MyFutureFund");
+            }}
           >
-            {PENSION_KINDS.map((item) => (
-              <option key={item} value={item}>
-                {item}
+            {PENSION_KIND_OPTIONS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
               </option>
             ))}
           </select>
           <input
             className="login-input"
             type="number"
-            placeholder="Current value €"
+            placeholder="Current pot €"
             value={value}
             onChange={(event) => setValue(event.target.value)}
+          />
+        </div>
+        {kind === "MYFUTUREFUND" ? (
+          <label className="login-label" style={{ marginTop: "0.75rem" }}>
+            Monthly gross pay (optional — fills 2026 rates)
+            <input
+              className="login-input"
+              type="number"
+              placeholder="e.g. 3200"
+              value={gross}
+              onChange={(event) => setGross(event.target.value)}
+            />
+          </label>
+        ) : null}
+        <div className="tag-chip-row" style={{ marginTop: "0.75rem" }}>
+          <input
+            className="login-input"
+            type="number"
+            placeholder="You / month €"
+            value={employee}
+            onChange={(event) => setEmployee(event.target.value)}
           />
           <input
             className="login-input"
             type="number"
-            placeholder="Employer match / year €"
-            value={match}
-            onChange={(event) => setMatch(event.target.value)}
+            placeholder="Employer / month €"
+            value={employer}
+            onChange={(event) => setEmployer(event.target.value)}
+          />
+          <input
+            className="login-input"
+            type="number"
+            placeholder="State / month €"
+            value={stateTopUp}
+            onChange={(event) => setStateTopUp(event.target.value)}
           />
           <button type="button" className="btn btn-primary" onClick={() => void create()}>
             Add
@@ -104,11 +187,23 @@ export function PensionClient() {
             <div>
               <p className="spending-category-name">{item.name}</p>
               <p className="bank-meta">
-                {item.pensionKind ?? "Pension"}
-                {item.employerMatchAnnual
-                  ? ` · employer match ${formatMoney(item.employerMatchAnnual)}/year`
+                {PENSION_KIND_OPTIONS.find((option) => option.id === item.pensionKind)
+                  ?.label ?? item.pensionKind ?? "Pension"}
+                {item.monthlyInflow > 0
+                  ? ` · ${formatMoney(item.monthlyInflow)}/month in`
                   : ""}
               </p>
+              {item.employeeContributionMonthly ||
+              item.employerContributionMonthly ||
+              item.stateContributionMonthly ? (
+                <p className="bank-meta">
+                  You {formatMoney(item.employeeContributionMonthly ?? 0)} · employer{" "}
+                  {formatMoney(item.employerContributionMonthly ?? 0)}
+                  {item.stateContributionMonthly
+                    ? ` · State ${formatMoney(item.stateContributionMonthly)}`
+                    : ""}
+                </p>
+              ) : null}
             </div>
             <p className="spending-category-amount">{formatMoney(item.currentValue)}</p>
             <button

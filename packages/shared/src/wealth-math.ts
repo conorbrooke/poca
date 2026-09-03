@@ -59,3 +59,37 @@ export function holdingGain(
 ): number {
   return Math.round((price - averageCost) * quantity * 100) / 100;
 }
+
+export function monthlyPensionInflow(input: {
+  employeeContributionMonthly?: number | null;
+  employerContributionMonthly?: number | null;
+  stateContributionMonthly?: number | null;
+  employerMatchAnnual?: number | null;
+}): number {
+  const fromMonthly =
+    (input.employeeContributionMonthly ?? 0) +
+    (input.employerContributionMonthly ?? 0) +
+    (input.stateContributionMonthly ?? 0);
+  if (fromMonthly > 0) return Math.round(fromMonthly * 100) / 100;
+  if (input.employerMatchAnnual && input.employerMatchAnnual > 0) {
+    return Math.round((input.employerMatchAnnual / 12) * 100) / 100;
+  }
+  return 0;
+}
+
+export function myFutureFundMonthlyFromGross(grossMonthly: number): {
+  employee: number;
+  employer: number;
+  state: number;
+  total: number;
+} {
+  const employee = Math.round(grossMonthly * 0.015 * 100) / 100;
+  const employer = Math.round(grossMonthly * 0.015 * 100) / 100;
+  const state = Math.round(grossMonthly * 0.005 * 100) / 100;
+  return {
+    employee,
+    employer,
+    state,
+    total: Math.round((employee + employer + state) * 100) / 100,
+  };
+}

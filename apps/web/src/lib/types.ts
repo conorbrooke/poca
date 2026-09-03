@@ -139,4 +139,7 @@ export type CategoryOption = {
   icon: string | null;
   isSystem: boolean;
   kind: "EXPENSE" | "INCOME" | "TRANSFER";
+  isBill?: boolean;
+  isEssential?: boolean;
+  billCadence?: "WEEKLY" | "MONTHLY" | "YEARLY";
 };

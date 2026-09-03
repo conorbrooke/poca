@@ -238,7 +238,14 @@ function CategoryRow({
           {category.icon ?? "•"}
         </span>
         <div className="spending-category-copy">
-          <p className="spending-category-name">{category.name}</p>
+          <p className="spending-category-name">
+            {category.name}
+            {category.isBill ? (
+              <span className="transfer-link-badge" style={{ marginLeft: "0.45rem" }}>
+                Bill
+              </span>
+            ) : null}
+          </p>
           <p className="bank-meta">
             {category.transactionCount} transaction
             {category.transactionCount === 1 ? "" : "s"} · {category.share}%

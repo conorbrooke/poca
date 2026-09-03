@@ -61,6 +61,9 @@ export const createCategorySchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   icon: z.string().max(32).optional(),
   kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).default("EXPENSE"),
+  isBill: z.boolean().optional(),
+  isEssential: z.boolean().optional(),
+  billCadence: z.enum(["WEEKLY", "MONTHLY", "YEARLY"]).optional(),
 });
 
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
@@ -70,6 +73,9 @@ export const updateCategorySchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   icon: z.string().max(32).nullable().optional(),
   kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).optional(),
+  isBill: z.boolean().optional(),
+  isEssential: z.boolean().optional(),
+  billCadence: z.enum(["WEEKLY", "MONTHLY", "YEARLY"]).optional(),
 });
 
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
@@ -170,6 +176,8 @@ export type SpendingCategorySummary = {
   color: string;
   icon: string | null;
   isSystem: boolean;
+  isBill?: boolean;
+  isEssential?: boolean;
   kind: CategoryKind;
   totalSpent: number;
   transactionCount: number;
@@ -264,6 +272,8 @@ export type CategoryDetailResponse = {
     color: string;
     icon: string | null;
     isSystem: boolean;
+    isBill?: boolean;
+    isEssential?: boolean;
     kind: CategoryKind;
   };
   range: SpendingPeriodKind;
@@ -295,10 +305,11 @@ export const DEFAULT_CATEGORY_DEFINITIONS = [
   { name: "Travel", color: "#0ea5e9", icon: "✈️", kind: "EXPENSE" as const },
   { name: "Entertainment", color: "#ec4899", icon: "🎬", kind: "EXPENSE" as const },
   { name: "Shopping", color: "#8b5cf6", icon: "🛍️", kind: "EXPENSE" as const },
-  { name: "Subscriptions", color: "#6366f1", icon: "📱", kind: "EXPENSE" as const },
+  { name: "Subscriptions", color: "#6366f1", icon: "📱", kind: "EXPENSE" as const, isBill: true, isEssential: false },
   { name: "Health & Fitness", color: "#14b8a6", icon: "💪", kind: "EXPENSE" as const },
-  { name: "Insurance", color: "#78716c", icon: "🛡️", kind: "EXPENSE" as const },
-  { name: "Utilities", color: "#eab308", icon: "💡", kind: "EXPENSE" as const },
+  { name: "Insurance", color: "#78716c", icon: "🛡️", kind: "EXPENSE" as const, isBill: true, isEssential: true },
+  { name: "Utilities", color: "#eab308", icon: "💡", kind: "EXPENSE" as const, isBill: true, isEssential: true },
+  { name: "Rent", color: "#a16207", icon: "🏠", kind: "EXPENSE" as const, isBill: true, isEssential: true },
   { name: "Education", color: "#0891b2", icon: "📚", kind: "EXPENSE" as const },
   { name: "Transfers", color: "#475569", icon: "↔️", kind: "TRANSFER" as const },
   { name: "ATM", color: "#334155", icon: "🏧", kind: "EXPENSE" as const },

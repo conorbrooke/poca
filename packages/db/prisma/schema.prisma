@@ -143,6 +143,9 @@ model Category {
   icon      String?
   kind      CategoryKind @default(EXPENSE)
   isSystem  Boolean      @default(false)
+  isBill      Boolean      @default(false)
+  isEssential Boolean      @default(false)
+  billCadence BillCadence  @default(MONTHLY)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
   deletedAt DateTime?
@@ -403,6 +406,7 @@ enum PensionKind {
   OCCUPATIONAL
   PRSA
   AVC
+  MYFUTUREFUND
 }
 
 model MonthlyBudget {
@@ -487,6 +491,9 @@ model WealthItem {
   minimumPayment       Decimal?     @db.Decimal(14, 2)
   pensionKind          PensionKind?
   employerMatchAnnual  Decimal?     @db.Decimal(14, 2)
+  employeeContributionMonthly Decimal? @db.Decimal(14, 2)
+  employerContributionMonthly Decimal? @db.Decimal(14, 2)
+  stateContributionMonthly    Decimal? @db.Decimal(14, 2)
   notes                String?
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt

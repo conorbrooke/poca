@@ -18,7 +18,7 @@ import {
   emergencyFundTarget,
   holdingGain,
   holdingMarketValue,
-  monthlyFromCadence,
+  monthlyPensionInflow,
   remainingBudget,
   savingsRate,
   sortAvalanche,
@@ -84,10 +84,21 @@ export class WealthService {
       this.getBudget(period.year, period.month),
       this.getCashflow(userId, period.year, period.month),
       this.getNetWorth(userId),
-      this.listBills(),
+      this.listBills(period.year, period.month),
       this.listGoals(),
       this.getHabits(period.year, period.month),
     ]);
+
+    await this.snapshotNetWorth();
+    const snapshots = await this.prisma.netWorthSnapshot.findMany({
+      where: { userId },
+      orderBy: { asOf: "desc" },
+      take: 2,
+    });
+    const previousSnapshot = snapshots[1] ?? snapshots[0] ?? null;
+    const netWorthDelta = previousSnapshot
+      ? Math.round((netWorth.netWorth - toNumber(previousSnapshot.netWorth)) * 100) / 100
+      : 0;
 
     const essentialMonthly = bills
       .filter((bill) => bill.isEssential)
@@ -95,12 +106,18 @@ export class WealthService {
     const emergencyTarget = emergencyFundTarget(essentialMonthly, 3);
     const emergencyGoal = goals.find((goal) => goal.kind === "EMERGENCY");
     const emergencySaved = emergencyGoal?.currentAmount ?? 0;
+    const billSpend = bills.reduce((sum, bill) => sum + bill.spentThisMonth, 0);
+    const surplus = Math.round((cashflow.income - cashflow.spending) * 100) / 100;
+    const pensionMonthlyIn = netWorth.items
+      .filter((item) => item.class === "PENSION")
+      .reduce((sum, item) => sum + (item.monthlyInflow ?? 0), 0);
 
     return {
       year: period.year,
       month: period.month,
       income: cashflow.income,
       spending: cashflow.spending,
+      surplus,
       savingsRate: savingsRate(cashflow.income, cashflow.spending),
       interestGross: cashflow.interestGross,
       interestAfterDirt: afterDirt(cashflow.interestGross),
@@ -114,6 +131,12 @@ export class WealthService {
       overBudgetCount: budget.lines.filter((line) => line.spent > line.amount && line.amount > 0)
         .length,
       netWorth: netWorth.netWorth,
+      netWorthDelta,
+      assets: netWorth.assets,
+      liabilities: netWorth.liabilities,
+      allocation: netWorth.allocation,
+      pensionMonthlyIn: Math.round(pensionMonthlyIn * 100) / 100,
+      billSpend: Math.round(billSpend * 100) / 100,
       essentialMonthly,
       emergencyTarget,
       emergencySaved,
@@ -158,6 +181,8 @@ export class WealthService {
         spent: spentAmount,
         remaining: remainingBudget(amount, spentAmount),
         transactionCount: spent?.count ?? 0,
+        isBill: category.isBill,
+        isEssential: category.isEssential,
       };
     });
 
@@ -318,6 +343,7 @@ export class WealthService {
         (line) =>
           line.amount === 0 &&
           line.spent >= 150 &&
+          !line.isBill &&
           !["atm", "other"].includes(line.name.toLowerCase()),
       )
       .sort((left, right) => right.spent - left.spent)
@@ -566,27 +592,39 @@ export class WealthService {
     };
   }
 
-  async listBills() {
+  async listBills(year?: number, month?: number) {
     const userId = await this.demoUserId();
-    const bills = await this.prisma.recurringBill.findMany({
-      where: { userId },
-      include: { category: { select: { id: true, name: true, color: true } } },
-      orderBy: { name: "asc" },
-    });
-    return bills.map((bill) => {
-      const typicalAmount = toNumber(bill.typicalAmount);
+    await this.categories.ensureDefaults(userId);
+    const period = this.resolveMonth(year, month);
+    const { periodStart, periodEnd } = monthBounds(period.year, period.month);
+    const [categories, spentRows] = await Promise.all([
+      this.prisma.category.findMany({
+        where: {
+          userId,
+          isBill: true,
+          kind: CategoryKind.EXPENSE,
+          deletedAt: null,
+        },
+        orderBy: { name: "asc" },
+      }),
+      this.categoryTotals(userId, periodStart, periodEnd, CategoryKind.EXPENSE),
+    ]);
+    const spentByCategory = new Map(spentRows.map((row) => [row.categoryId, row]));
+    return categories.map((category) => {
+      const spent = spentByCategory.get(category.id);
+      const spentThisMonth = spent?.total ?? 0;
       return {
-        id: bill.id,
-        name: bill.name,
-        categoryId: bill.categoryId,
-        categoryName: bill.category?.name ?? null,
-        payeeMatch: bill.payeeMatch,
-        typicalAmount,
-        cadence: bill.cadence,
-        nextDue: bill.nextDue?.toISOString() ?? null,
-        isEssential: bill.isEssential,
-        notes: bill.notes,
-        monthlyAmount: monthlyFromCadence(typicalAmount, bill.cadence),
+        id: category.id,
+        categoryId: category.id,
+        name: category.name,
+        color: category.color,
+        icon: category.icon,
+        cadence: category.billCadence,
+        isEssential: category.isEssential,
+        spentThisMonth,
+        transactionCount: spent?.count ?? 0,
+        typicalAmount: spentThisMonth,
+        monthlyAmount: spentThisMonth,
       };
     });
   }
@@ -610,41 +648,49 @@ export class WealthService {
 
   async createBill(input: UpsertBillInput) {
     const userId = await this.demoUserId();
-    return this.prisma.recurringBill.create({
-      data: {
-        userId,
-        name: input.name,
-        categoryId: input.categoryId ?? null,
-        payeeMatch: input.payeeMatch ?? null,
-        typicalAmount: input.typicalAmount,
-        cadence: input.cadence,
-        nextDue: input.nextDue ? new Date(input.nextDue) : null,
+    if (input.categoryId) {
+      await this.categories.updateCategory(userId, input.categoryId, {
+        isBill: true,
         isEssential: input.isEssential,
-        notes: input.notes ?? null,
-      },
+        billCadence: input.cadence,
+      });
+      return this.prisma.category.findFirstOrThrow({
+        where: { id: input.categoryId, userId },
+      });
+    }
+    return this.categories.createCategory(userId, {
+      name: input.name,
+      kind: "EXPENSE",
+      isBill: true,
+      isEssential: input.isEssential,
+      billCadence: input.cadence,
+      icon: input.icon,
+      color: input.color,
     });
   }
 
   async updateBill(id: string, input: UpsertBillInput) {
     const userId = await this.demoUserId();
-    await this.requireBill(userId, id);
-    return this.prisma.recurringBill.update({
-      where: { id },
-      data: {
-        name: input.name,
-        categoryId: input.categoryId ?? null,
-        payeeMatch: input.payeeMatch ?? null,
-        typicalAmount: input.typicalAmount,
-        cadence: input.cadence,
-        nextDue: input.nextDue ? new Date(input.nextDue) : null,
-        isEssential: input.isEssential,
-        notes: input.notes ?? null,
-      },
+    return this.categories.updateCategory(userId, id, {
+      name: input.name,
+      isBill: true,
+      isEssential: input.isEssential,
+      billCadence: input.cadence,
     });
   }
 
   async deleteBill(id: string) {
     const userId = await this.demoUserId();
+    const category = await this.prisma.category.findFirst({
+      where: { id, userId, deletedAt: null },
+    });
+    if (category) {
+      await this.prisma.category.update({
+        where: { id },
+        data: { isBill: false, isEssential: false },
+      });
+      return { deleted: true };
+    }
     await this.requireBill(userId, id);
     await this.prisma.recurringBill.delete({ where: { id } });
     return { deleted: true };
@@ -761,6 +807,52 @@ export class WealthService {
         return isLoan ? sum : sum + Math.max(balance, 0);
       }, 0);
 
+    const savings = accounts
+      .filter((account) => !linkedAccountIds.has(account.id))
+      .reduce((sum, account) => {
+        const balance = toNumber(account.currentBalance);
+        const isLoan = (account.accountType ?? "").toUpperCase() === "LOAN";
+        const isSavings = (account.accountType ?? "").toUpperCase() === "SVGS";
+        return !isLoan && isSavings ? sum + Math.max(balance, 0) : sum;
+      }, 0);
+    const cash = Math.round((bankCash - savings) * 100) / 100;
+
+    const holdingsValue = holdings.reduce((sum, holding) => {
+      const price = holding.lastPrice
+        ? toNumber(holding.lastPrice)
+        : toNumber(holding.averageCost);
+      return sum + holdingMarketValue(toNumber(holding.quantity), price);
+    }, 0);
+
+    const sumClass = (cls: WealthClass, side: "ASSET" | "LIABILITY") =>
+      items
+        .filter((item) => item.side === side && item.class === cls)
+        .reduce((sum, item) => {
+          if (item.accountId) {
+            const account = accounts.find((row) => row.id === item.accountId);
+            return (
+              sum +
+              (account
+                ? Math.max(toNumber(account.currentBalance), 0)
+                : toNumber(item.currentValue))
+            );
+          }
+          return sum + toNumber(item.currentValue);
+        }, 0);
+
+    const pension = sumClass("PENSION", "ASSET");
+    const property = sumClass("PROPERTY", "ASSET");
+    const vehicles = sumClass("VEHICLE", "ASSET");
+    const otherAssets =
+      sumClass("OTHER", "ASSET") + sumClass("BANK_CASH", "ASSET");
+    const investments = Math.round(
+      (holdingsValue + sumClass("INVESTMENT", "ASSET")) * 100,
+    ) / 100;
+    const mortgage = sumClass("MORTGAGE", "LIABILITY");
+    const otherDebts = items
+      .filter((item) => item.side === "LIABILITY" && item.class !== "MORTGAGE")
+      .reduce((sum, item) => sum + toNumber(item.currentValue), 0);
+
     const assets =
       bankCash +
       items
@@ -772,12 +864,7 @@ export class WealthService {
           }
           return sum + toNumber(item.currentValue);
         }, 0) +
-      holdings.reduce((sum, holding) => {
-        const price = holding.lastPrice
-          ? toNumber(holding.lastPrice)
-          : toNumber(holding.averageCost);
-        return sum + holdingMarketValue(toNumber(holding.quantity), price);
-      }, 0);
+      holdingsValue;
 
     const liabilities = items
       .filter((item) => item.side === "LIABILITY")
@@ -789,6 +876,17 @@ export class WealthService {
       assets: Math.round(assets * 100) / 100,
       liabilities: Math.round(liabilities * 100) / 100,
       netWorth,
+      allocation: {
+        cash,
+        savings: Math.round(savings * 100) / 100,
+        pension: Math.round(pension * 100) / 100,
+        investments,
+        property: Math.round(property * 100) / 100,
+        vehicles: Math.round(vehicles * 100) / 100,
+        otherAssets: Math.round(otherAssets * 100) / 100,
+        mortgage: Math.round(mortgage * 100) / 100,
+        otherDebts: Math.round(otherDebts * 100) / 100,
+      },
       items: items.map((item) => this.serializeWealthItem(item, accounts)),
     };
   }
@@ -990,6 +1088,9 @@ export class WealthService {
       minimumPayment: input.minimumPayment ?? null,
       pensionKind: input.pensionKind as PensionKind | null,
       employerMatchAnnual: input.employerMatchAnnual ?? null,
+      employeeContributionMonthly: input.employeeContributionMonthly ?? null,
+      employerContributionMonthly: input.employerContributionMonthly ?? null,
+      stateContributionMonthly: input.stateContributionMonthly ?? null,
       notes: input.notes ?? null,
     };
   }
@@ -1006,6 +1107,9 @@ export class WealthService {
       minimumPayment: { toString(): string } | null;
       pensionKind: PensionKind | null;
       employerMatchAnnual: { toString(): string } | null;
+      employeeContributionMonthly: { toString(): string } | null;
+      employerContributionMonthly: { toString(): string } | null;
+      stateContributionMonthly: { toString(): string } | null;
       notes: string | null;
     },
     accounts: Array<{ id: string; name: string; currentBalance: { toString(): string } }>,
@@ -1030,6 +1134,29 @@ export class WealthService {
       employerMatchAnnual: item.employerMatchAnnual
         ? toNumber(item.employerMatchAnnual)
         : null,
+      employeeContributionMonthly: item.employeeContributionMonthly
+        ? toNumber(item.employeeContributionMonthly)
+        : null,
+      employerContributionMonthly: item.employerContributionMonthly
+        ? toNumber(item.employerContributionMonthly)
+        : null,
+      stateContributionMonthly: item.stateContributionMonthly
+        ? toNumber(item.stateContributionMonthly)
+        : null,
+      monthlyInflow: monthlyPensionInflow({
+        employeeContributionMonthly: item.employeeContributionMonthly
+          ? toNumber(item.employeeContributionMonthly)
+          : 0,
+        employerContributionMonthly: item.employerContributionMonthly
+          ? toNumber(item.employerContributionMonthly)
+          : 0,
+        stateContributionMonthly: item.stateContributionMonthly
+          ? toNumber(item.stateContributionMonthly)
+          : 0,
+        employerMatchAnnual: item.employerMatchAnnual
+          ? toNumber(item.employerMatchAnnual)
+          : 0,
+      }),
       notes: item.notes,
     };
   }

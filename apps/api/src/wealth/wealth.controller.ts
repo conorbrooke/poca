@@ -69,8 +69,13 @@ export class WealthController {
   }
 
   @Get("bills")
-  listBills() {
-    return this.wealth.listBills();
+  listBills(@Query() query: unknown) {
+    const { year, month } = parseOrThrow(
+      wealthMonthQuerySchema,
+      query,
+      "Wealth month query",
+    );
+    return this.wealth.listBills(year, month);
   }
 
   @Get("bills/suggestions")

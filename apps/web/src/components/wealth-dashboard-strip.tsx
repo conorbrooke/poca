@@ -10,6 +10,7 @@ type Overview = {
   savingsRate: number;
   remaining: number;
   netWorth: number;
+  netWorthDelta?: number;
   habitAlerts: number;
 };
 
@@ -49,6 +50,11 @@ export function WealthDashboardStrip() {
           label="Net worth"
           value={formatMoney(data.netWorth)}
           tone="balance"
+          hint={
+            data.netWorthDelta
+              ? `${formatMoney(data.netWorthDelta, "EUR", { signed: true })} vs last snapshot`
+              : undefined
+          }
         />
         <Link href="/wealth/habits" className="stat-card-link">
           <StatCard

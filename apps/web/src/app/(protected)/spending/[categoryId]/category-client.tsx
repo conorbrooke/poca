@@ -54,6 +54,8 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const [iconValue, setIconValue] = useState("");
   const [colorValue, setColorValue] = useState("#6366f1");
   const [kindValue, setKindValue] = useState<CategoryKind>("EXPENSE");
+  const [isBillValue, setIsBillValue] = useState(false);
+  const [isEssentialValue, setIsEssentialValue] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
   const [deletingCategory, setDeletingCategory] = useState(false);
 
@@ -105,6 +107,8 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
       setIconValue(detailRes.category.icon ?? "");
       setColorValue(detailRes.category.color);
       setKindValue(detailRes.category.kind);
+      setIsBillValue(Boolean(detailRes.category.isBill));
+      setIsEssentialValue(Boolean(detailRes.category.isEssential));
       setCategories(categoryList);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load category");
@@ -175,6 +179,8 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
           icon: iconValue.trim() || null,
           color: colorValue,
           kind: kindValue,
+          isBill: kindValue === "EXPENSE" ? isBillValue : false,
+          isEssential: kindValue === "EXPENSE" && isBillValue ? isEssentialValue : false,
         }),
       });
       await loadData();
@@ -336,6 +342,10 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
             value={kindValue}
             onChange={setKindValue}
             disabled={isSystemCategory}
+            isBill={isBillValue}
+            isEssential={isEssentialValue}
+            onBillChange={setIsBillValue}
+            onEssentialChange={setIsEssentialValue}
           />
           <div className="tag-chip-row">
             <button

@@ -35,6 +35,9 @@ export class CategoriesService {
           icon: definition.icon,
           kind: definition.kind,
           isSystem: "isSystem" in definition ? definition.isSystem : false,
+          isBill: "isBill" in definition ? Boolean(definition.isBill) : false,
+          isEssential:
+            "isEssential" in definition ? Boolean(definition.isEssential) : false,
         },
         update: {},
       });
@@ -51,9 +54,18 @@ export class CategoriesService {
 
   async createCategory(
     userId: string,
-    input: { name: string; color?: string; icon?: string; kind?: "EXPENSE" | "INCOME" | "TRANSFER" },
+    input: {
+      name: string;
+      color?: string;
+      icon?: string;
+      kind?: "EXPENSE" | "INCOME" | "TRANSFER";
+      isBill?: boolean;
+      isEssential?: boolean;
+      billCadence?: "WEEKLY" | "MONTHLY" | "YEARLY";
+    },
   ) {
     const name = input.name.trim();
+    const isBill = input.kind === "INCOME" || input.kind === "TRANSFER" ? false : Boolean(input.isBill);
 
     const created = await this.prisma.category.upsert({
       where: {
@@ -68,12 +80,18 @@ export class CategoriesService {
         color: input.color ?? "#6366f1",
         icon: input.icon,
         kind: input.kind ?? "EXPENSE",
+        isBill,
+        isEssential: isBill ? Boolean(input.isEssential) : false,
+        billCadence: input.billCadence ?? "MONTHLY",
       },
       update: {
         deletedAt: null,
         ...(input.color ? { color: input.color } : {}),
         ...(input.icon !== undefined ? { icon: input.icon } : {}),
         ...(input.kind ? { kind: input.kind } : {}),
+        ...(input.isBill !== undefined ? { isBill } : {}),
+        ...(input.isEssential !== undefined ? { isEssential: input.isEssential } : {}),
+        ...(input.billCadence ? { billCadence: input.billCadence } : {}),
       },
     });
 
@@ -89,6 +107,9 @@ export class CategoriesService {
       color?: string;
       icon?: string | null;
       kind?: "EXPENSE" | "INCOME" | "TRANSFER";
+      isBill?: boolean;
+      isEssential?: boolean;
+      billCadence?: "WEEKLY" | "MONTHLY" | "YEARLY";
     },
   ) {
     const category = await this.prisma.category.findFirst({
@@ -124,6 +145,9 @@ export class CategoriesService {
         ...(input.color ? { color: input.color } : {}),
         ...(input.icon !== undefined ? { icon: input.icon } : {}),
         ...(input.kind ? { kind: input.kind } : {}),
+        ...(input.isBill !== undefined ? { isBill: input.isBill } : {}),
+        ...(input.isEssential !== undefined ? { isEssential: input.isEssential } : {}),
+        ...(input.billCadence ? { billCadence: input.billCadence } : {}),
       },
     });
 

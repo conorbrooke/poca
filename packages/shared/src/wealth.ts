@@ -21,7 +21,41 @@ export const WEALTH_CLASSES = [
   "CREDIT_CARD",
   "PERSONAL",
 ] as const;
-export const PENSION_KINDS = ["OCCUPATIONAL", "PRSA", "AVC"] as const;
+export const PENSION_KINDS = [
+  "MYFUTUREFUND",
+  "OCCUPATIONAL",
+  "PRSA",
+  "AVC",
+] as const;
+
+export const PENSION_KIND_OPTIONS = [
+  {
+    id: "MYFUTUREFUND" as const,
+    label: "MyFutureFund",
+    hint: "State auto-enrolment. In 2026 you pay 1.5% of gross, your employer matches 1.5%, and the State adds 0.5%. Enter the monthly euro amounts from your payslip.",
+  },
+  {
+    id: "OCCUPATIONAL" as const,
+    label: "Occupational / workplace",
+    hint: "A scheme run through your employer. Enter the monthly amounts leaving your pay, plus any employer contribution.",
+  },
+  {
+    id: "PRSA" as const,
+    label: "PRSA",
+    hint: "Personal Retirement Savings Account. Track the pot value and what you put in each month.",
+  },
+  {
+    id: "AVC" as const,
+    label: "AVC",
+    hint: "Additional Voluntary Contributions on top of a workplace scheme.",
+  },
+] as const;
+
+export const MYFUTUREFUND_2026 = {
+  employeeRate: 0.015,
+  employerRate: 0.015,
+  stateRate: 0.005,
+} as const;
 
 export const IRISH_BILL_PRESETS = [
   { name: "Rent", cadence: "MONTHLY" as const, essential: true },
@@ -50,7 +84,7 @@ export const IRISH_WEALTH_NOTES = {
   dirt:
     "Deposit interest in Ireland is usually subject to DIRT at 33%. The after-DIRT figure is a hint, not a Revenue calculation.",
   pension:
-    "PRSA, occupational pension, and AVC contributions often get tax relief at your rate. Growth sits in the wrapper; drawdown is taxable. This is a tracker, not advice.",
+    "MyFutureFund (Ireland’s auto-enrolment scheme) takes a monthly slice of gross pay — in 2026, 1.5% from you, 1.5% from your employer, and 0.5% from the State. Occupational pensions, PRSAs, and AVCs work the same way here: pot value plus monthly inflows. Tax relief and drawdown rules are education, not advice.",
   cgt:
     "Direct shares are typically capital gains tax (currently 33%) in Ireland, with an annual exemption that changes — check Revenue before you rely on a number.",
   funds:
@@ -91,16 +125,11 @@ export type CopyBudgetInput = z.infer<typeof copyBudgetSchema>;
 export const upsertBillSchema = z.object({
   name: z.string().min(1).max(80),
   categoryId: z.string().min(1).nullable().optional(),
-  payeeMatch: z.string().max(120).nullable().optional(),
-  typicalAmount: z.number().positive(),
+  typicalAmount: z.number().nonnegative().optional(),
   cadence: z.enum(BILL_CADENCES).default("MONTHLY"),
-  nextDue: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
-  isEssential: z.boolean().default(false),
-  notes: z.string().max(400).nullable().optional(),
+  isEssential: z.boolean().default(true),
+  icon: z.string().max(32).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 });
 
 export type UpsertBillInput = z.infer<typeof upsertBillSchema>;
@@ -131,6 +160,9 @@ export const upsertWealthItemSchema = z.object({
   minimumPayment: z.number().nonnegative().nullable().optional(),
   pensionKind: z.enum(PENSION_KINDS).nullable().optional(),
   employerMatchAnnual: z.number().nonnegative().nullable().optional(),
+  employeeContributionMonthly: z.number().nonnegative().nullable().optional(),
+  employerContributionMonthly: z.number().nonnegative().nullable().optional(),
+  stateContributionMonthly: z.number().nonnegative().nullable().optional(),
   notes: z.string().max(400).nullable().optional(),
 });
 

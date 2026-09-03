@@ -4,6 +4,8 @@ import {
   emergencyFundTarget,
   holdingGain,
   monthlyFromCadence,
+  monthlyPensionInflow,
+  myFutureFundMonthlyFromGross,
   remainingBudget,
   savingsRate,
   sortAvalanche,
@@ -55,5 +57,14 @@ describe("wealth math", () => {
 
   it("computes holding gain", () => {
     expect(holdingGain(10, 12, 15)).toBe(30);
+  });
+
+  it("computes 2026 MyFutureFund monthly amounts from gross pay", () => {
+    expect(myFutureFundMonthlyFromGross(4000)).toEqual({
+      employee: 60,
+      employer: 60,
+      state: 20,
+      total: 140,
+    });
   });
 });
