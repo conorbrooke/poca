@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
 import {
   CategoryKind,
   type PensionKind,
@@ -7,6 +7,7 @@ import {
 } from "@poca/db";
 import type {
   CopyBudgetInput,
+  SpendingPeriodInput,
   UpsertBillInput,
   UpsertBudgetInput,
   UpsertGoalInput,
@@ -15,12 +16,17 @@ import type {
 } from "@poca/shared";
 import {
   afterDirt,
+  budgetMonthFromPeriod,
   emergencyFundTarget,
+  formatDateOnly,
   holdingGain,
   holdingMarketValue,
   monthlyPensionInflow,
+  previousPeriodWindow,
   remainingBudget,
+  resolveSpendingPeriod,
   savingsRate,
+  spendingPeriodHrefQuery,
   sortAvalanche,
   sortSnowball,
 } from "@poca/shared";
@@ -77,16 +83,21 @@ export class WealthService {
     return { year: year ?? now.year, month: month ?? now.month };
   }
 
-  async getOverview(year?: number, month?: number) {
+  private resolvePeriod(query: SpendingPeriodInput = {}) {
+    return resolveSpendingPeriod(query);
+  }
+
+  async getOverview(query: SpendingPeriodInput = {}) {
     const userId = await this.demoUserId();
-    const period = this.resolveMonth(year, month);
+    const range = this.resolvePeriod(query);
+    const budgetMonth = budgetMonthFromPeriod(range);
     const [budget, cashflow, netWorth, bills, goals, habits] = await Promise.all([
-      this.getBudget(period.year, period.month),
-      this.getCashflow(userId, period.year, period.month),
+      this.getBudget(query),
+      this.getCashflow(userId, range.periodStart, range.periodEnd),
       this.getNetWorth(userId),
-      this.listBills(period.year, period.month),
+      this.listBills(query),
       this.listGoals(),
-      this.getHabits(period.year, period.month),
+      this.getHabits(query),
     ]);
 
     await this.snapshotNetWorth();
@@ -113,8 +124,11 @@ export class WealthService {
       .reduce((sum, item) => sum + (item.monthlyInflow ?? 0), 0);
 
     return {
-      year: period.year,
-      month: period.month,
+      year: budgetMonth.year,
+      month: budgetMonth.month,
+      periodLabel: range.label,
+      periodKind: range.kind,
+      rolledFrom: budget.rolledFrom,
       income: cashflow.income,
       spending: cashflow.spending,
       surplus,
@@ -145,15 +159,24 @@ export class WealthService {
     };
   }
 
-  async getBudget(year?: number, month?: number) {
+  async getBudget(query: SpendingPeriodInput = {}) {
     const userId = await this.demoUserId();
-    const period = this.resolveMonth(year, month);
-    const { periodStart, periodEnd } = monthBounds(period.year, period.month);
-    const [budget, spentRows, categories] = await Promise.all([
+    const range = this.resolvePeriod(query);
+    const { year, month } = budgetMonthFromPeriod(range);
+    const { periodStart, periodEnd } = range;
+    const [thisMonth, prior, spentRows, categories] = await Promise.all([
       this.prisma.monthlyBudget.findUnique({
         where: {
-          userId_year_month: { userId, year: period.year, month: period.month },
+          userId_year_month: { userId, year, month },
         },
+        include: { lines: true },
+      }),
+      this.prisma.monthlyBudget.findFirst({
+        where: {
+          userId,
+          OR: [{ year: { lt: year } }, { year, month: { lt: month } }],
+        },
+        orderBy: [{ year: "desc" }, { month: "desc" }],
         include: { lines: true },
       }),
       this.categoryTotals(userId, periodStart, periodEnd, CategoryKind.EXPENSE),
@@ -162,6 +185,10 @@ export class WealthService {
         orderBy: { name: "asc" },
       }),
     ]);
+
+    const budget = thisMonth ?? prior;
+    const rolledFrom =
+      !thisMonth && prior ? { year: prior.year, month: prior.month } : null;
 
     const spentByCategory = new Map(spentRows.map((row) => [row.categoryId, row]));
     const lineByCategory = new Map(
@@ -190,9 +217,11 @@ export class WealthService {
     const totalSpent = lines.reduce((sum, line) => sum + line.spent, 0);
 
     return {
-      id: budget?.id ?? null,
-      year: period.year,
-      month: period.month,
+      id: thisMonth?.id ?? null,
+      year,
+      month,
+      periodLabel: range.label,
+      rolledFrom,
       overallCap: budget?.overallCap ? toNumber(budget.overallCap) : null,
       totalBudgeted,
       totalSpent,
@@ -233,7 +262,7 @@ export class WealthService {
       });
     }
 
-    return this.getBudget(input.year, input.month);
+    return this.getBudget({ year: input.year, month: input.month });
   }
 
   async copyBudget(input: CopyBudgetInput) {
@@ -280,16 +309,16 @@ export class WealthService {
     });
   }
 
-  async getHabits(year?: number, month?: number) {
+  async getHabits(query: SpendingPeriodInput = {}) {
     const userId = await this.demoUserId();
-    const period = this.resolveMonth(year, month);
-    const previous = shiftMonth(period.year, period.month, -1);
-    const currentBounds = monthBounds(period.year, period.month);
-    const previousBounds = monthBounds(previous.year, previous.month);
+    const range = this.resolvePeriod(query);
+    const previous = previousPeriodWindow(range);
     const now = new Date();
     const isCurrentMonth =
-      now.getFullYear() === period.year && now.getMonth() + 1 === period.month;
-    const monthQuery = `year=${period.year}&month=${period.month}`;
+      range.kind === "month" &&
+      now.getFullYear() === range.year &&
+      now.getMonth() + 1 === range.month;
+    const monthQuery = spendingPeriodHrefQuery(range);
 
     const [
       budget,
@@ -301,21 +330,17 @@ export class WealthService {
       previousCashflow,
       previousExpenseRows,
     ] = await Promise.all([
-      this.getBudget(period.year, period.month),
-      this.merchantTotals(userId, currentBounds.periodStart, currentBounds.periodEnd),
-      this.merchantTotals(
-        userId,
-        previousBounds.periodStart,
-        previousBounds.periodEnd,
-      ),
-      this.timePatterns(userId, currentBounds.periodStart, currentBounds.periodEnd),
-      this.leakTotals(userId, currentBounds.periodStart, currentBounds.periodEnd),
-      this.getCashflow(userId, period.year, period.month),
-      this.getCashflow(userId, previous.year, previous.month),
+      this.getBudget(query),
+      this.merchantTotals(userId, range.periodStart, range.periodEnd),
+      this.merchantTotals(userId, previous.periodStart, previous.periodEnd),
+      this.timePatterns(userId, range.periodStart, range.periodEnd),
+      this.leakTotals(userId, range.periodStart, range.periodEnd),
+      this.getCashflow(userId, range.periodStart, range.periodEnd),
+      this.getCashflow(userId, previous.periodStart, previous.periodEnd),
       this.categoryTotals(
         userId,
-        previousBounds.periodStart,
-        previousBounds.periodEnd,
+        previous.periodStart,
+        previous.periodEnd,
         CategoryKind.EXPENSE,
       ),
     ]);
@@ -518,7 +543,7 @@ export class WealthService {
         title: "No leaks worth acting on this month",
         why:
           delta > 10
-            ? `Spending is ${eur(delta)} higher than ${monthName(previous.year, previous.month)}, but nothing is over budget or sitting in ATM/Other/Revolut.`
+            ? `Spending is ${eur(delta)} higher than the previous ${range.label.toLowerCase() === "all time" ? "window" : "period"}, but nothing is over budget or sitting in ATM/Other/Revolut.`
             : "Budgets, categorisation, and merchant totals look in line. Use this page again mid-month.",
         doNext: "Keep categorising new lines as they sync so next month’s check stays honest.",
         href: `/spending?${monthQuery}`,
@@ -556,8 +581,9 @@ export class WealthService {
         : "Spend is reasonably spread across the month.";
 
     return {
-      year: period.year,
-      month: period.month,
+      year: budgetMonthFromPeriod(range).year,
+      month: budgetMonthFromPeriod(range).month,
+      periodLabel: range.label,
       income: cashflow.income,
       spending: cashflow.spending,
       surplus: Math.round((cashflow.income - cashflow.spending) * 100) / 100,
@@ -592,11 +618,11 @@ export class WealthService {
     };
   }
 
-  async listBills(year?: number, month?: number) {
+  async listBills(query: SpendingPeriodInput = {}) {
     const userId = await this.demoUserId();
     await this.categories.ensureDefaults(userId);
-    const period = this.resolveMonth(year, month);
-    const { periodStart, periodEnd } = monthBounds(period.year, period.month);
+    const range = this.resolvePeriod(query);
+    const { periodStart, periodEnd } = range;
     const [categories, spentRows] = await Promise.all([
       this.prisma.category.findMany({
         where: {
@@ -745,6 +771,20 @@ export class WealthService {
         accountId: input.accountId ?? null,
         notes: input.notes ?? null,
       },
+    });
+  }
+
+  async addGoalAmount(id: string, amount: number) {
+    const userId = await this.demoUserId();
+    const goal = await this.requireGoal(userId, id);
+    if (goal.accountId) {
+      throw new BadRequestException(
+        "This pot follows a linked account. Transfer into that account (or unlink it) instead of logging a manual add.",
+      );
+    }
+    return this.prisma.savingsGoal.update({
+      where: { id },
+      data: { currentAmount: toNumber(goal.currentAmount) + amount },
     });
   }
 
@@ -1049,10 +1089,11 @@ export class WealthService {
     return netWorth.items.filter((item) => item.class === "PENSION");
   }
 
-  async getIncomeMix(year?: number, month?: number) {
+  async getIncomeMix(query: SpendingPeriodInput = {}) {
     const userId = await this.demoUserId();
-    const period = this.resolveMonth(year, month);
-    const { periodStart, periodEnd } = monthBounds(period.year, period.month);
+    const range = this.resolvePeriod(query);
+    const { periodStart, periodEnd } = range;
+    const budgetMonth = budgetMonthFromPeriod(range);
     const rows = await this.categoryTotals(
       userId,
       periodStart,
@@ -1061,8 +1102,9 @@ export class WealthService {
     );
     const total = rows.reduce((sum, row) => sum + row.total, 0);
     return {
-      year: period.year,
-      month: period.month,
+      year: budgetMonth.year,
+      month: budgetMonth.month,
+      periodLabel: range.label,
       total,
       sources: rows
         .sort((left, right) => right.total - left.total)
@@ -1073,6 +1115,142 @@ export class WealthService {
           count: row.count,
           share: total > 0 ? Math.round((row.total / total) * 1000) / 10 : 0,
         })),
+    };
+  }
+
+  async getSeries(query: SpendingPeriodInput = {}) {
+    const userId = await this.demoUserId();
+    const range = this.resolvePeriod(query);
+    const now = new Date();
+    const capEnd = range.periodEnd.getTime() > now.getTime() ? now : range.periodEnd;
+    let start = new Date(range.periodStart);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(capEnd);
+    end.setHours(0, 0, 0, 0);
+    const maxDays = 400;
+    const dayMs = 24 * 60 * 60 * 1000;
+    if ((end.getTime() - start.getTime()) / dayMs > maxDays) {
+      start = new Date(end);
+      start.setDate(start.getDate() - maxDays);
+    }
+
+    const dates: string[] = [];
+    const cursor = new Date(start);
+    while (cursor.getTime() <= end.getTime()) {
+      dates.push(formatDateOnly(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const [netWorth, rates, cashTx, flowTx] = await Promise.all([
+      this.getNetWorth(userId),
+      this.fx.getRates(),
+      this.prisma.transaction.findMany({
+        where: {
+          account: { userId, isActive: true },
+          bookedAt: { gte: start },
+        },
+        select: { bookedAt: true, amount: true, currency: true },
+      }),
+      this.prisma.transaction.findMany({
+        where: {
+          isSplit: false,
+          bookedAt: { gte: start, lte: range.periodEnd },
+          account: { userId },
+          category: {
+            kind: { in: [CategoryKind.INCOME, CategoryKind.EXPENSE] },
+            deletedAt: null,
+          },
+        },
+        select: {
+          bookedAt: true,
+          amount: true,
+          currency: true,
+          category: { select: { kind: true } },
+        },
+      }),
+    ]);
+
+    const splits = await this.prisma.transactionSplit.findMany({
+      where: {
+        transaction: {
+          isSplit: true,
+          bookedAt: { gte: start, lte: range.periodEnd },
+          account: { userId },
+        },
+        category: {
+          kind: { in: [CategoryKind.INCOME, CategoryKind.EXPENSE] },
+          deletedAt: null,
+        },
+      },
+      select: {
+        amount: true,
+        category: { select: { kind: true } },
+        transaction: { select: { bookedAt: true, currency: true } },
+      },
+    });
+
+    const incomeByDay = new Map<string, number>();
+    const spendingByDay = new Map<string, number>();
+    const addFlow = (date: Date, kind: CategoryKind, amount: number, currency: string) => {
+      const key = formatDateOnly(date);
+      const euros = Math.abs(this.fx.toEur(amount, currency, rates));
+      if (kind === CategoryKind.INCOME) {
+        incomeByDay.set(key, (incomeByDay.get(key) ?? 0) + euros);
+      } else {
+        spendingByDay.set(key, (spendingByDay.get(key) ?? 0) + euros);
+      }
+    };
+    for (const row of flowTx) {
+      if (!row.category) continue;
+      addFlow(row.bookedAt, row.category.kind, toNumber(row.amount), row.currency);
+    }
+    for (const row of splits) {
+      addFlow(
+        row.transaction.bookedAt,
+        row.category.kind,
+        toNumber(row.amount),
+        row.transaction.currency,
+      );
+    }
+
+    const afterByDay = new Map<string, number>();
+    for (const row of cashTx) {
+      const key = formatDateOnly(row.bookedAt);
+      const euros = this.fx.toEur(toNumber(row.amount), row.currency, rates);
+      afterByDay.set(key, (afterByDay.get(key) ?? 0) + euros);
+    }
+
+    const illiquidNet = Math.round((netWorth.netWorth - netWorth.bankCash) * 100) / 100;
+    let remainingAfter = 0;
+    for (const value of afterByDay.values()) remainingAfter += value;
+    const netWorthPoints: Array<{ date: string; value: number }> = [];
+    const income: Array<{ date: string; value: number }> = [];
+    const spending: Array<{ date: string; value: number }> = [];
+    const surplus: Array<{ date: string; value: number }> = [];
+    let cumulative = 0;
+
+    for (const date of dates) {
+      remainingAfter -= afterByDay.get(date) ?? 0;
+      const dayIncome = Math.round((incomeByDay.get(date) ?? 0) * 100) / 100;
+      const daySpending = Math.round((spendingByDay.get(date) ?? 0) * 100) / 100;
+      cumulative = Math.round((cumulative + dayIncome - daySpending) * 100) / 100;
+      const cash = Math.round((netWorth.bankCash - remainingAfter) * 100) / 100;
+      netWorthPoints.push({
+        date,
+        value: Math.round((cash + illiquidNet) * 100) / 100,
+      });
+      income.push({ date, value: dayIncome });
+      spending.push({ date, value: daySpending });
+      surplus.push({ date, value: cumulative });
+    }
+
+    return {
+      periodLabel: range.label,
+      truncated: start.getTime() > range.periodStart.getTime(),
+      netWorth: netWorthPoints,
+      income,
+      spending,
+      surplus,
     };
   }
 
@@ -1161,8 +1339,7 @@ export class WealthService {
     };
   }
 
-  private async getCashflow(userId: string, year: number, month: number) {
-    const { periodStart, periodEnd } = monthBounds(year, month);
+  private async getCashflow(userId: string, periodStart: Date, periodEnd: Date) {
     const [expenses, income] = await Promise.all([
       this.categoryTotals(userId, periodStart, periodEnd, CategoryKind.EXPENSE),
       this.categoryTotals(userId, periodStart, periodEnd, CategoryKind.INCOME),

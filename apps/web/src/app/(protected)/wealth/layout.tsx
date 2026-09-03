@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { WealthNav } from "../../../components/wealth-nav";
+import { WealthPeriodBar } from "../../../components/wealth-period-bar";
 
 export default function WealthLayout({
   children,
@@ -16,6 +17,7 @@ export default function WealthLayout({
       </header>
       <Suspense fallback={null}>
         <WealthNav />
+        <WealthPeriodBar />
       </Suspense>
       {children}
     </div>

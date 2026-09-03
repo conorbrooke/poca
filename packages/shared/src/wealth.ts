@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { spendingPeriodQuerySchema } from "./spending.js";
 
 export const BILL_CADENCES = ["WEEKLY", "MONTHLY", "YEARLY"] as const;
 export const SAVINGS_GOAL_KINDS = [
@@ -7,6 +8,14 @@ export const SAVINGS_GOAL_KINDS = [
   "CAR",
   "HOLIDAY",
   "GENERAL",
+] as const;
+
+export const SAVINGS_GOAL_KIND_OPTIONS = [
+  { id: "EMERGENCY" as const, label: "Emergency fund" },
+  { id: "HOUSE" as const, label: "House / mortgage" },
+  { id: "CAR" as const, label: "Car" },
+  { id: "HOLIDAY" as const, label: "Holiday" },
+  { id: "GENERAL" as const, label: "General savings" },
 ] as const;
 export const WEALTH_SIDES = ["ASSET", "LIABILITY"] as const;
 export const WEALTH_CLASSES = [
@@ -91,10 +100,9 @@ export const IRISH_WEALTH_NOTES = {
     "Many ETFs and funds used by Irish residents can be exit tax / 8-year deemed disposal (often 41%) depending on domicile. Check the product; Póca does not classify ISINs.",
 } as const;
 
-export const wealthMonthQuerySchema = z.object({
-  year: z.coerce.number().int().min(2000).max(2100).optional(),
-  month: z.coerce.number().int().min(1).max(12).optional(),
-});
+export const wealthPeriodQuerySchema = spendingPeriodQuerySchema;
+/** @deprecated Use wealthPeriodQuerySchema — accepts month, custom from/to, and all time */
+export const wealthMonthQuerySchema = spendingPeriodQuerySchema;
 
 export type WealthMonthQuery = z.infer<typeof wealthMonthQuerySchema>;
 
@@ -149,6 +157,12 @@ export const upsertGoalSchema = z.object({
 });
 
 export type UpsertGoalInput = z.infer<typeof upsertGoalSchema>;
+
+export const addGoalAmountSchema = z.object({
+  amount: z.number().positive(),
+});
+
+export type AddGoalAmountInput = z.infer<typeof addGoalAmountSchema>;
 
 export const upsertWealthItemSchema = z.object({
   name: z.string().min(1).max(80),

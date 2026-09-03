@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { IRISH_WEALTH_NOTES } from "@poca/shared";
-import { MonthPicker } from "../../../components/wealth-nav";
+import { LineChart } from "../../../components/line-chart";
 import { StatCard } from "../../../components/stats-grid";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
+import { useSpendingPeriod } from "../../../lib/spending-period";
 
 type Allocation = {
   cash: number;
@@ -24,6 +24,8 @@ type Allocation = {
 type Overview = {
   year: number;
   month: number;
+  periodLabel: string;
+  rolledFrom: { year: number; month: number } | null;
   income: number;
   spending: number;
   surplus: number;
@@ -46,6 +48,15 @@ type Overview = {
   emergencyTarget: number;
   emergencySaved: number;
   habitAlerts: number;
+};
+
+type Series = {
+  periodLabel: string;
+  truncated: boolean;
+  netWorth: Array<{ date: string; value: number }>;
+  income: Array<{ date: string; value: number }>;
+  spending: Array<{ date: string; value: number }>;
+  surplus: Array<{ date: string; value: number }>;
 };
 
 const ASSET_ROWS: Array<{ key: keyof Allocation; label: string; href: string }> = [
@@ -71,23 +82,16 @@ function SheetRow({
   label,
   amount,
   href,
-  year,
-  month,
-  muted,
+  suffix,
 }: {
   label: string;
   amount: number;
   href: string;
-  year: number;
-  month: number;
-  muted?: boolean;
+  suffix: string;
 }) {
-  if (muted && amount === 0) return null;
+  if (amount === 0) return null;
   return (
-    <Link
-      href={`${href}?year=${year}&month=${month}`}
-      className={`sheet-row${amount === 0 ? " sheet-row-empty" : ""}`}
-    >
+    <Link href={`${href}${suffix}`} className="sheet-row">
       <span>{label}</span>
       <span className="sheet-row-value">{formatMoney(amount)}</span>
     </Link>
@@ -95,48 +99,42 @@ function SheetRow({
 }
 
 export function WealthOverviewClient() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const now = new Date();
-  const year = Number(searchParams.get("year") ?? now.getFullYear());
-  const month = Number(searchParams.get("month") ?? now.getMonth() + 1);
+  const { queryString } = useSpendingPeriod();
+  const suffix = queryString ? `?${queryString}` : "";
   const [data, setData] = useState<Overview | null>(null);
+  const [series, setSeries] = useState<Series | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [incomeMix, setIncomeMix] = useState<{
     total: number;
     sources: Array<{ name: string; total: number; share: number }>;
   } | null>(null);
 
-  const setMonth = useCallback(
-    (nextYear: number, nextMonth: number) => {
-      router.replace(`/wealth?year=${nextYear}&month=${nextMonth}`);
-    },
-    [router],
-  );
-
   useEffect(() => {
     setError(null);
+    const query = queryString ? `?${queryString}` : "";
     void Promise.all([
-      apiFetch<Overview>(`/wealth/overview?year=${year}&month=${month}`),
+      apiFetch<Overview>(`/wealth/overview${query}`),
+      apiFetch<Series>(`/wealth/series${query}`),
       apiFetch<{
         total: number;
         sources: Array<{ name: string; total: number; share: number }>;
-      }>(`/wealth/income?year=${year}&month=${month}`),
+      }>(`/wealth/income${query}`),
     ])
-      .then(([overview, mix]) => {
+      .then(([overview, chart, mix]) => {
         setData(overview);
+        setSeries(chart);
         setIncomeMix(mix);
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Failed to load wealth");
       });
-  }, [year, month]);
+  }, [queryString]);
 
   if (!data && !error) {
     return (
       <div className="empty-state">
         <div className="loading-spinner" style={{ margin: "0 auto 1rem" }} />
-        <p>Loading this month…</p>
+        <p>Loading this period…</p>
       </div>
     );
   }
@@ -147,11 +145,16 @@ export function WealthOverviewClient() {
     data && data.emergencyTarget > 0
       ? Math.min(100, Math.round((data.emergencySaved / data.emergencyTarget) * 100))
       : null;
+  const visibleAssets = ASSET_ROWS.filter(
+    (row) => data && data.allocation[row.key] !== 0,
+  );
+  const visibleLiabilities = LIABILITY_ROWS.filter(
+    (row) => data && data.allocation[row.key] !== 0,
+  );
 
   return (
     <div>
       {error ? <div className="alert alert-error">{error}</div> : null}
-      <MonthPicker year={year} month={month} onChange={setMonth} />
       {data ? (
         <>
           <div className="hero-net-worth card">
@@ -169,14 +172,16 @@ export function WealthOverviewClient() {
                   : "Unchanged vs last snapshot"}
             </p>
             <p className="bank-meta">
-              Assets {formatMoney(data.assets)} · liabilities{" "}
-              {formatMoney(data.liabilities)}
+              Assets {formatMoney(data.assets)}
+              {data.liabilities > 0
+                ? ` · liabilities ${formatMoney(data.liabilities)}`
+                : ""}
             </p>
           </div>
 
           <div className="stats-grid">
             <StatCard
-              label="This month surplus"
+              label="This period surplus"
               value={formatMoney(data.surplus, "EUR", { signed: true })}
               hint={`${formatMoney(data.income)} in · ${formatMoney(data.spending)} out`}
               tone={data.surplus >= 0 ? "income" : "expense"}
@@ -184,19 +189,27 @@ export function WealthOverviewClient() {
             <StatCard
               label="Savings rate"
               value={`${data.savingsRate}%`}
-              hint="Income minus expenses this month"
+              hint={`Income minus expenses · ${data.periodLabel}`}
               tone={data.savingsRate >= 20 ? "income" : "default"}
             />
-            <StatCard
-              label="Pension growing"
-              value={formatMoney(data.allocation.pension)}
-              hint={
-                data.pensionMonthlyIn > 0
-                  ? `${formatMoney(data.pensionMonthlyIn)}/month going in`
-                  : "Add monthly contributions on Pension"
-              }
-              tone="balance"
-            />
+            {data.allocation.pension > 0 || data.pensionMonthlyIn > 0 ? (
+              <StatCard
+                label="Pension"
+                value={formatMoney(data.allocation.pension)}
+                hint={
+                  data.pensionMonthlyIn > 0
+                    ? `${formatMoney(data.pensionMonthlyIn)}/month going in`
+                    : "Add monthly contributions on Pension"
+                }
+                tone="balance"
+              />
+            ) : (
+              <StatCard
+                label="Bills paid"
+                value={formatMoney(data.billSpend)}
+                hint={data.periodLabel}
+              />
+            )}
             <StatCard
               label="Emergency fund"
               value={formatMoney(data.emergencySaved)}
@@ -208,13 +221,54 @@ export function WealthOverviewClient() {
             />
           </div>
 
+          {series ? (
+            <div className="chart-grid">
+              <div className="card">
+                <h2 className="section-title">Net worth</h2>
+                <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
+                  Daily reconstructed bank cash plus anything you have added
+                  (pension, property, debts).
+                  {series.truncated ? " Showing the latest 400 days." : ""}
+                </p>
+                <LineChart
+                  series={[
+                    {
+                      id: "nw",
+                      label: "Net worth",
+                      color: "var(--accent)",
+                      points: series.netWorth,
+                    },
+                  ]}
+                />
+              </div>
+              <div className="card">
+                <h2 className="section-title">Growing / shrinking</h2>
+                <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
+                  Cumulative surplus for {data.periodLabel}. Up means you kept
+                  more than you spent.
+                </p>
+                <LineChart
+                  series={[
+                    {
+                      id: "surplus",
+                      label: "Cumulative surplus",
+                      color:
+                        (series.surplus.at(-1)?.value ?? 0) >= 0
+                          ? "var(--income)"
+                          : "var(--expense)",
+                      points: series.surplus,
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+          ) : null}
+
           {data.habitAlerts > 0 ? (
             <div className="alert alert-warning">
               {data.habitAlerts} spending leak{data.habitAlerts === 1 ? "" : "s"}{" "}
-              to clear this month.{" "}
-              <Link href={`/wealth/habits?year=${year}&month=${month}`}>
-                Open the spending check
-              </Link>
+              to clear this period.{" "}
+              <Link href={`/wealth/habits${suffix}`}>Open the spending check</Link>
             </div>
           ) : null}
 
@@ -222,10 +276,19 @@ export function WealthOverviewClient() {
             <div className="alert alert-warning">
               {data.overBudgetCount} categor{data.overBudgetCount === 1 ? "y is" : "ies are"}{" "}
               over budget.{" "}
-              <Link href={`/wealth/budget?year=${year}&month=${month}`}>
-                Open budget
-              </Link>
+              <Link href={`/wealth/budget${suffix}`}>Open budget</Link>
             </div>
+          ) : null}
+
+          {data.rolledFrom ? (
+            <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
+              Budget carried from{" "}
+              {new Date(data.rolledFrom.year, data.rolledFrom.month - 1, 1).toLocaleDateString(
+                "en-IE",
+                { month: "long", year: "numeric" },
+              )}
+              . Save on Budget to lock this month.
+            </p>
           ) : null}
 
           <div className="balance-sheet">
@@ -234,17 +297,23 @@ export function WealthOverviewClient() {
                 <h2 className="section-title">Assets</h2>
                 <span className="bank-meta">{formatMoney(data.assets)}</span>
               </div>
-              {ASSET_ROWS.map((row) => (
-                <SheetRow
-                  key={row.key}
-                  label={row.label}
-                  amount={data.allocation[row.key]}
-                  href={row.href}
-                  year={year}
-                  month={month}
-                  muted={row.key === "otherAssets"}
-                />
-              ))}
+              {visibleAssets.length === 0 ? (
+                <p className="bank-meta">
+                  Nothing listed yet. Add a pension, property, or vehicle on{" "}
+                  <Link href={`/wealth/net-worth${suffix}`}>Net worth</Link> — empty
+                  rows are hidden until you add them.
+                </p>
+              ) : (
+                visibleAssets.map((row) => (
+                  <SheetRow
+                    key={row.key}
+                    label={row.label}
+                    amount={data.allocation[row.key]}
+                    href={row.href}
+                    suffix={suffix}
+                  />
+                ))
+              )}
               <div className="sheet-total">
                 <span>Total assets</span>
                 <span>{formatMoney(data.assets)}</span>
@@ -255,16 +324,22 @@ export function WealthOverviewClient() {
                 <h2 className="section-title">Liabilities</h2>
                 <span className="bank-meta">{formatMoney(data.liabilities)}</span>
               </div>
-              {LIABILITY_ROWS.map((row) => (
-                <SheetRow
-                  key={row.key}
-                  label={row.label}
-                  amount={data.allocation[row.key]}
-                  href={row.href}
-                  year={year}
-                  month={month}
-                />
-              ))}
+              {visibleLiabilities.length === 0 ? (
+                <p className="bank-meta">
+                  No debts added. A mortgage only appears after you add it on{" "}
+                  <Link href={`/wealth/net-worth${suffix}`}>Net worth</Link>.
+                </p>
+              ) : (
+                visibleLiabilities.map((row) => (
+                  <SheetRow
+                    key={row.key}
+                    label={row.label}
+                    amount={data.allocation[row.key]}
+                    href={row.href}
+                    suffix={suffix}
+                  />
+                ))
+              )}
               <div className="sheet-total">
                 <span>Total liabilities</span>
                 <span>{formatMoney(data.liabilities)}</span>
@@ -273,10 +348,9 @@ export function WealthOverviewClient() {
           </div>
 
           <div className="card" style={{ marginTop: "1rem" }}>
-            <h2 className="section-title">This month</h2>
+            <h2 className="section-title">This period</h2>
             <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
-              Cashflow for the calendar month — bills are included in spending,
-              not a separate pot.
+              {data.periodLabel}. Bills are included in spending, not a separate pot.
             </p>
             <div className="sheet-row">
               <span>Income</span>
@@ -288,10 +362,7 @@ export function WealthOverviewClient() {
             </div>
             <div className="sheet-row">
               <span>Bills paid</span>
-              <Link
-                href={`/wealth/bills?year=${year}&month=${month}`}
-                className="sheet-row-value"
-              >
+              <Link href={`/wealth/bills${suffix}`} className="sheet-row-value">
                 {formatMoney(data.billSpend)}
               </Link>
             </div>
@@ -311,7 +382,7 @@ export function WealthOverviewClient() {
           <div className="card" style={{ marginTop: "1rem" }}>
             <h2 className="section-title">Income mix</h2>
             <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
-              {formatMoney(incomeMix?.total ?? 0)} earned this month
+              {formatMoney(incomeMix?.total ?? 0)} earned in {data.periodLabel}
             </p>
             {(incomeMix?.sources ?? []).filter((row) => row.total > 0).length ===
             0 ? (

@@ -1742,7 +1742,59 @@ button {
 }
 
 .wealth-subnav {
+  margin-bottom: 0.75rem;
+}
+
+.wealth-period-bar {
   margin-bottom: 1.25rem;
+}
+
+.wealth-period-bar .period-picker {
+  margin-top: 0;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.line-chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.line-chart-zero {
+  stroke: var(--border);
+  stroke-dasharray: 4 4;
+}
+
+.line-chart-tick {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.line-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-top: 0.5rem;
+}
+
+.line-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.line-chart-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
 }
 
 .hero-net-worth {
@@ -1810,7 +1862,8 @@ button {
 }
 
 @media (max-width: 720px) {
-  .balance-sheet {
+  .balance-sheet,
+  .chart-grid {
     grid-template-columns: 1fr;
   }
 }

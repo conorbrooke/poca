@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   afterDirt,
+  budgetMonthFromPeriod,
   emergencyFundTarget,
   holdingGain,
   monthlyFromCadence,
@@ -57,6 +58,31 @@ describe("wealth math", () => {
 
   it("computes holding gain", () => {
     expect(holdingGain(10, 12, 15)).toBe(30);
+  });
+
+  it("picks the calendar month from a resolved period", () => {
+    expect(
+      budgetMonthFromPeriod({
+        kind: "month",
+        periodStart: new Date(2026, 8, 1),
+        periodEnd: new Date(2026, 8, 30, 23, 59, 59, 999),
+        label: "September 2026",
+        cacheKey: "month",
+        year: 2026,
+        month: 9,
+      }),
+    ).toEqual({ year: 2026, month: 9 });
+  });
+
+  it("sums monthly pension inflows, falling back to annual match / 12", () => {
+    expect(
+      monthlyPensionInflow({
+        employeeContributionMonthly: 45,
+        employerContributionMonthly: 45,
+        stateContributionMonthly: 15,
+      }),
+    ).toBe(105);
+    expect(monthlyPensionInflow({ employerMatchAnnual: 1200 })).toBe(100);
   });
 
   it("computes 2026 MyFutureFund monthly amounts from gross pay", () => {

@@ -10,14 +10,15 @@ import {
   Query,
 } from "@nestjs/common";
 import {
+  addGoalAmountSchema,
   copyBudgetSchema,
   debtOrderSchema,
+  spendingPeriodQuerySchema,
   upsertBillSchema,
   upsertBudgetSchema,
   upsertGoalSchema,
   upsertHoldingSchema,
   upsertWealthItemSchema,
-  wealthMonthQuerySchema,
 } from "@poca/shared";
 import { parseOrThrow } from "../common/parse-or-throw";
 import { WealthService } from "./wealth.service";
@@ -28,22 +29,32 @@ export class WealthController {
 
   @Get("overview")
   getOverview(@Query() query: unknown) {
-    const { year, month } = parseOrThrow(
-      wealthMonthQuerySchema,
+    const input = parseOrThrow(
+      spendingPeriodQuerySchema,
       query,
-      "Wealth month query",
+      "Wealth period query",
     );
-    return this.wealth.getOverview(year, month);
+    return this.wealth.getOverview(input);
+  }
+
+  @Get("series")
+  getSeries(@Query() query: unknown) {
+    const input = parseOrThrow(
+      spendingPeriodQuerySchema,
+      query,
+      "Wealth period query",
+    );
+    return this.wealth.getSeries(input);
   }
 
   @Get("budget")
   getBudget(@Query() query: unknown) {
-    const { year, month } = parseOrThrow(
-      wealthMonthQuerySchema,
+    const input = parseOrThrow(
+      spendingPeriodQuerySchema,
       query,
-      "Wealth month query",
+      "Wealth period query",
     );
-    return this.wealth.getBudget(year, month);
+    return this.wealth.getBudget(input);
   }
 
   @Put("budget")
@@ -60,22 +71,22 @@ export class WealthController {
 
   @Get("habits")
   getHabits(@Query() query: unknown) {
-    const { year, month } = parseOrThrow(
-      wealthMonthQuerySchema,
+    const input = parseOrThrow(
+      spendingPeriodQuerySchema,
       query,
-      "Wealth month query",
+      "Wealth period query",
     );
-    return this.wealth.getHabits(year, month);
+    return this.wealth.getHabits(input);
   }
 
   @Get("bills")
   listBills(@Query() query: unknown) {
-    const { year, month } = parseOrThrow(
-      wealthMonthQuerySchema,
+    const input = parseOrThrow(
+      spendingPeriodQuerySchema,
       query,
-      "Wealth month query",
+      "Wealth period query",
     );
-    return this.wealth.listBills(year, month);
+    return this.wealth.listBills(input);
   }
 
   @Get("bills/suggestions")
@@ -115,6 +126,12 @@ export class WealthController {
   updateGoal(@Param("id") id: string, @Body() body: unknown) {
     const input = parseOrThrow(upsertGoalSchema, body, "Goal body");
     return this.wealth.updateGoal(id, input);
+  }
+
+  @Post("goals/:id/add")
+  addGoalAmount(@Param("id") id: string, @Body() body: unknown) {
+    const input = parseOrThrow(addGoalAmountSchema, body, "Add to goal body");
+    return this.wealth.addGoalAmount(id, input.amount);
   }
 
   @Delete("goals/:id")
@@ -194,11 +211,11 @@ export class WealthController {
 
   @Get("income")
   getIncomeMix(@Query() query: unknown) {
-    const { year, month } = parseOrThrow(
-      wealthMonthQuerySchema,
+    const input = parseOrThrow(
+      spendingPeriodQuerySchema,
       query,
-      "Wealth month query",
+      "Wealth period query",
     );
-    return this.wealth.getIncomeMix(year, month);
+    return this.wealth.getIncomeMix(input);
   }
 }

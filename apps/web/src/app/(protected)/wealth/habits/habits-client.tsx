@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { MonthPicker } from "../../../../components/wealth-nav";
 import { StatCard } from "../../../../components/stats-grid";
 import { apiFetch } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
+import { useSpendingPeriod } from "../../../../lib/spending-period";
 
 type Action = {
   id: string;
@@ -70,32 +69,21 @@ type Habits = {
 };
 
 export function HabitsClient() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const now = new Date();
-  const year = Number(searchParams.get("year") ?? now.getFullYear());
-  const month = Number(searchParams.get("month") ?? now.getMonth() + 1);
+  const { queryString } = useSpendingPeriod();
   const [data, setData] = useState<Habits | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const setMonth = useCallback(
-    (nextYear: number, nextMonth: number) => {
-      router.replace(`/wealth/habits?year=${nextYear}&month=${nextMonth}`);
-    },
-    [router],
-  );
-
   useEffect(() => {
     setLoading(true);
     setError(null);
-    void apiFetch<Habits>(`/wealth/habits?year=${year}&month=${month}`)
+    void apiFetch<Habits>(`/wealth/habits${queryString ? `?${queryString}` : ""}`)
       .then(setData)
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Failed to load spending check");
       })
       .finally(() => setLoading(false));
-  }, [year, month]);
+  }, [queryString]);
 
   if (loading && !data) {
     return (
@@ -119,17 +107,15 @@ export function HabitsClient() {
       <div className="habits-intro">
         <p className="page-eyebrow">Spending check</p>
         <h2 className="section-title" style={{ marginBottom: "0.4rem" }}>
-          Where this month leaked
+          Where this period leaked
         </h2>
         <p className="bank-meta" style={{ maxWidth: "62ch" }}>
-          This page is a monthly diagnostic, not a score. It compares expense
-          spend to your budget and last month, then tells you what to fix —
-          uncategorised cash, Revolut top-ups counted twice, categories over
-          plan, and merchants that jumped.
+          This page is a diagnostic, not a score. It compares expense spend to
+          your budget and the previous window of the same length, then tells
+          you what to fix — uncategorised cash, Revolut top-ups counted twice,
+          categories over plan, and merchants that jumped.
         </p>
       </div>
-
-      <MonthPicker year={year} month={month} onChange={setMonth} />
 
       <div className="habits-howto">
         <div className="card habits-howto-step">

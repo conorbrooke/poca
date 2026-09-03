@@ -265,3 +265,51 @@ function formatDayLabel(iso: string): string {
 function isIsoDate(value: string | undefined | null): value is string {
   return Boolean(value && ISO_DATE.test(value));
 }
+
+export function budgetMonthFromPeriod(period: ResolvedSpendingPeriod): {
+  year: number;
+  month: number;
+} {
+  if (period.year && period.month) {
+    return { year: period.year, month: period.month };
+  }
+  return {
+    year: period.periodEnd.getFullYear(),
+    month: period.periodEnd.getMonth() + 1,
+  };
+}
+
+export function previousPeriodWindow(period: ResolvedSpendingPeriod): {
+  periodStart: Date;
+  periodEnd: Date;
+} {
+  const length = Math.max(period.periodEnd.getTime() - period.periodStart.getTime(), 0);
+  const periodEnd = new Date(period.periodStart.getTime() - 1);
+  const periodStart = new Date(periodEnd.getTime() - length);
+  return { periodStart, periodEnd };
+}
+
+export function spendingPeriodHrefQuery(period: ResolvedSpendingPeriod): string {
+  if (period.kind === "all") {
+    return spendingPeriodQueryString({ kind: "all" });
+  }
+  if (period.from && period.to) {
+    return spendingPeriodQueryString({
+      kind: "custom",
+      from: period.from,
+      to: period.to,
+    });
+  }
+  if (period.year && period.month) {
+    return spendingPeriodQueryString({
+      kind: "month",
+      year: period.year,
+      month: period.month,
+    });
+  }
+  return spendingPeriodQueryString({
+    kind: "custom",
+    from: formatDateOnly(period.periodStart),
+    to: formatDateOnly(period.periodEnd),
+  });
+}

@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { IRISH_BILL_PRESETS } from "@poca/shared";
-import { MonthPicker } from "../../../../components/wealth-nav";
+import { IRISH_BILL_PRESETS, spendingPeriodLabel } from "@poca/shared";
 import { apiFetch } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
+import { useSpendingPeriod } from "../../../../lib/spending-period";
 
 type Bill = {
   id: string;
@@ -22,11 +21,8 @@ type Bill = {
 };
 
 export function BillsClient() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const now = new Date();
-  const year = Number(searchParams.get("year") ?? now.getFullYear());
-  const month = Number(searchParams.get("month") ?? now.getMonth() + 1);
+  const { period, queryString } = useSpendingPeriod();
+  const suffix = queryString ? `?${queryString}` : "";
   const [bills, setBills] = useState<Bill[]>([]);
   const [suggestions, setSuggestions] = useState<
     Array<{ name: string; typicalAmount: number; payeeMatch: string; count: number }>
@@ -35,13 +31,9 @@ export function BillsClient() {
   const [essential, setEssential] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const setMonth = (nextYear: number, nextMonth: number) => {
-    router.replace(`/wealth/bills?year=${nextYear}&month=${nextMonth}`);
-  };
-
   async function reload() {
     const [list, suggested] = await Promise.all([
-      apiFetch<Bill[]>(`/wealth/bills?year=${year}&month=${month}`),
+      apiFetch<Bill[]>(`/wealth/bills${suffix}`),
       apiFetch<typeof suggestions>("/wealth/bills/suggestions"),
     ]);
     setBills(list);
@@ -52,7 +44,7 @@ export function BillsClient() {
     void reload().catch((err: unknown) => {
       setError(err instanceof Error ? err.message : "Failed to load bills");
     });
-  }, [year, month]);
+  }, [queryString]);
 
   async function create(
     billName = name,
@@ -100,15 +92,11 @@ export function BillsClient() {
   const essentialMonthly = bills
     .filter((bill) => bill.isEssential)
     .reduce((sum, bill) => sum + bill.monthlyAmount, 0);
-  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("en-IE", {
-    month: "long",
-    year: "numeric",
-  });
+  const monthLabel = spendingPeriodLabel(period);
 
   return (
     <div>
       {error ? <div className="alert alert-error">{error}</div> : null}
-      <MonthPicker year={year} month={month} onChange={setMonth} />
       <div className="card" style={{ marginBottom: "1rem" }}>
         <h2 className="section-title">Recurring bills</h2>
         <p className="bank-meta" style={{ maxWidth: "62ch" }}>
@@ -187,7 +175,7 @@ export function BillsClient() {
                 {formatMoney(bill.spentThisMonth)}
               </p>
               <Link
-                href={`/spending/${bill.categoryId}?year=${year}&month=${month}`}
+                href={`/spending/${bill.categoryId}${suffix}`}
                 className="btn btn-secondary"
               >
                 Transactions

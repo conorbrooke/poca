@@ -14,13 +14,24 @@ const links = [
   { href: "/wealth/investments", label: "Investments" },
 ];
 
+const PERIOD_KEYS = ["year", "month", "from", "to", "range"] as const;
+
+export function wealthPeriodSuffix(searchParams: {
+  get(name: string): string | null;
+}): string {
+  const params = new URLSearchParams();
+  for (const key of PERIOD_KEYS) {
+    const value = searchParams.get(key);
+    if (value) params.set(key, value);
+  }
+  const suffix = params.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
 export function WealthNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const year = searchParams.get("year");
-  const month = searchParams.get("month");
-  const suffix =
-    year && month ? `?year=${year}&month=${month}` : "";
+  const suffix = wealthPeriodSuffix(searchParams);
 
   return (
     <div className="spending-subnav wealth-subnav">
@@ -39,38 +50,6 @@ export function WealthNav() {
           </Link>
         );
       })}
-    </div>
-  );
-}
-
-export function MonthPicker({
-  year,
-  month,
-  onChange,
-}: {
-  year: number;
-  month: number;
-  onChange: (year: number, month: number) => void;
-}) {
-  const label = new Date(year, month - 1, 1).toLocaleDateString("en-IE", {
-    month: "long",
-    year: "numeric",
-  });
-
-  function shift(delta: number) {
-    const next = new Date(year, month - 1 + delta, 1);
-    onChange(next.getFullYear(), next.getMonth() + 1);
-  }
-
-  return (
-    <div className="range-tabs" style={{ marginBottom: "1rem" }}>
-      <button type="button" className="range-tab" onClick={() => shift(-1)}>
-        Previous
-      </button>
-      <span className="range-tab active">{label}</span>
-      <button type="button" className="range-tab" onClick={() => shift(1)}>
-        Next
-      </button>
     </div>
   );
 }
