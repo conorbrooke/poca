@@ -44,7 +44,7 @@ export class CategoriesService {
   async listCategories(userId: string) {
     await this.ensureDefaults(userId);
     return this.prisma.category.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       orderBy: [{ isSystem: "asc" }, { name: "asc" }],
     });
   }
@@ -70,6 +70,7 @@ export class CategoriesService {
         kind: input.kind ?? "EXPENSE",
       },
       update: {
+        deletedAt: null,
         ...(input.color ? { color: input.color } : {}),
         ...(input.icon !== undefined ? { icon: input.icon } : {}),
         ...(input.kind ? { kind: input.kind } : {}),
@@ -91,7 +92,7 @@ export class CategoriesService {
     },
   ) {
     const category = await this.prisma.category.findFirst({
-      where: { id: categoryId, userId },
+      where: { id: categoryId, userId, deletedAt: null },
     });
     if (!category) throw new NotFoundException("Category not found");
 
@@ -132,7 +133,7 @@ export class CategoriesService {
 
   async deleteCategory(userId: string, categoryId: string) {
     const category = await this.prisma.category.findFirst({
-      where: { id: categoryId, userId },
+      where: { id: categoryId, userId, deletedAt: null },
     });
     if (!category) throw new NotFoundException("Category not found");
     if (category.isSystem) {
@@ -167,7 +168,10 @@ export class CategoriesService {
         where: { userId, categoryId },
       });
 
-      await db.category.delete({ where: { id: categoryId } });
+      await db.category.update({
+        where: { id: categoryId },
+        data: { deletedAt: new Date() },
+      });
 
       return {
         movedTransactions: movedTransactions.count,
@@ -182,7 +186,7 @@ export class CategoriesService {
   async getOtherCategoryId(userId: string): Promise<string> {
     await this.ensureDefaults(userId);
     const other = await this.prisma.category.findFirstOrThrow({
-      where: { userId, name: "Other" },
+      where: { userId, name: "Other", deletedAt: null },
     });
     return other.id;
   }
@@ -197,7 +201,7 @@ export class CategoriesService {
     const force = options?.force ?? false;
 
     const userRules = await this.prisma.categoryRule.findMany({
-      where: { userId },
+      where: { userId, category: { deletedAt: null } },
       include: { category: true, tags: true },
       orderBy: { priority: "desc" },
     });
@@ -216,7 +220,9 @@ export class CategoriesService {
       },
     });
 
-    const categories = await this.prisma.category.findMany({ where: { userId } });
+    const categories = await this.prisma.category.findMany({
+      where: { userId, deletedAt: null },
+    });
     const categoryIdByName = new Map(categories.map((c) => [c.name, c.id]));
 
     let updated = 0;

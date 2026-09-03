@@ -385,7 +385,7 @@ export class TransfersService {
 
   private async getTransferCategoryIds(userId: string) {
     const categories = await this.prisma.category.findMany({
-      where: { userId, kind: CategoryKind.TRANSFER },
+      where: { userId, kind: CategoryKind.TRANSFER, deletedAt: null },
       select: { id: true },
     });
     return categories.map((row) => row.id);

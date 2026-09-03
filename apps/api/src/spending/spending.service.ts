@@ -100,7 +100,7 @@ export class SpendingService {
     query: SpendingQuery,
   ): Promise<CategoryDetailResponse> {
     const category = await this.prisma.category.findFirst({
-      where: { id: categoryId, userId },
+      where: { id: categoryId, userId, deletedAt: null },
     });
     if (!category) throw new NotFoundException("Category not found");
 
@@ -581,7 +581,9 @@ export class SpendingService {
       },
     });
 
-    const categories = await this.prisma.category.findMany({ where: { userId } });
+    const categories = await this.prisma.category.findMany({
+      where: { userId, deletedAt: null },
+    });
     const categoryMap = new Map(categories.map((category) => [category.id, category]));
     const grouped = new Map<
       string,

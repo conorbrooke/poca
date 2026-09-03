@@ -113,7 +113,9 @@ export class TagsService {
       },
     });
 
-    const categories = await this.prisma.category.findMany({ where: { userId } });
+    const categories = await this.prisma.category.findMany({
+      where: { userId, deletedAt: null },
+    });
     const categoryMap = new Map(categories.map((category) => [category.id, category]));
     const totals = new Map<string, { totalSpent: number; transactionCount: number }>();
     const rates = await this.fx.getRates();
