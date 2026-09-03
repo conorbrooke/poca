@@ -15,7 +15,9 @@ export async function middleware(request: NextRequest) {
     pathname === "/bank/callback" ||
     pathname.startsWith("/api/auth/verify") ||
     pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico"
+    pathname === "/favicon.ico" ||
+    pathname === "/icon.png" ||
+    /\.(?:png|jpe?g|gif|webp|svg|ico)$/i.test(pathname)
   ) {
     return NextResponse.next();
   }
@@ -39,5 +41,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico)$).*)",
+  ],
 };

@@ -104,8 +104,6 @@ button {
 
 .app-brand-logo,
 .app-brand-mark {
-  width: 36px;
-  height: 36px;
   border-radius: 12px;
   flex-shrink: 0;
   object-fit: cover;
@@ -113,6 +111,8 @@ button {
 }
 
 .app-brand-mark {
+  width: 36px;
+  height: 36px;
   background: linear-gradient(135deg, var(--accent), var(--accent-dim));
   display: grid;
   place-items: center;
@@ -737,6 +737,10 @@ button {
   align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.login-brand .app-brand-logo {
+  border-radius: 16px;
 }
 
 .login-title {
