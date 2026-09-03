@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { BrandLogo } from "../../components/brand-logo";
 
 export function LoginClient() {
   const router = useRouter();
@@ -46,9 +47,9 @@ export function LoginClient() {
     <div className="login-page">
       <div className="login-card card">
         <div className="login-brand">
-          <span className="app-brand-mark">P</span>
+          <BrandLogo size={56} />
           <div>
-            <p className="page-eyebrow">Private preview</p>
+            <p className="page-eyebrow">Póca · Private preview</p>
             <h1 className="login-title">Enter access code</h1>
           </div>
         </div>

@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { BrandLogo } from "../../components/brand-logo";
 
 export default function HomePage() {
   return (
     <div className="page">
-      <header className="page-header">
+      <header className="page-header home-hero">
+        <BrandLogo size={72} />
         <p className="page-eyebrow">Open source · Ireland · EUR</p>
         <h1 className="page-title">Personal finance, clearly.</h1>
         <p className="page-subtitle">
@@ -13,14 +15,7 @@ export default function HomePage() {
         </p>
       </header>
 
-      <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          flexWrap: "wrap",
-          marginBottom: "2.5rem",
-        }}
-      >
+      <div className="home-actions">
         <Link href="/dashboard" className="btn btn-primary">
           Open dashboard
         </Link>
