@@ -3,15 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { SPENDING_RANGES } from "@poca/shared";
+import { applySpendingPeriod } from "@poca/shared";
+import { PeriodPicker } from "../../../../components/period-picker";
 import { apiFetch } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
-import { useSpendingRange } from "../../../../lib/spending-range";
+import { useSpendingPeriod } from "../../../../lib/spending-period";
 import type { TagOption, TagSummaryResponse } from "../../../../lib/types";
 
 export function TagsClient() {
   const searchParams = useSearchParams();
-  const [range, setRange] = useSpendingRange(searchParams.get("range"));
+  const { period, setPeriod, queryString } = useSpendingPeriod();
   const [tags, setTags] = useState<TagOption[]>([]);
   const [summaries, setSummaries] = useState<TagSummaryResponse[]>([]);
   const [newName, setNewName] = useState("");
@@ -26,7 +27,7 @@ export function TagsClient() {
     try {
       const tagList = await apiFetch<TagOption[]>("/spending/tags");
       setTags(tagList);
-      const params = new URLSearchParams({ range });
+      const params = new URLSearchParams(queryString);
       if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
       const rows = await Promise.all(
         tagList.map((tag) =>
@@ -41,7 +42,7 @@ export function TagsClient() {
     } finally {
       setLoading(false);
     }
-  }, [range, bankConnectionId]);
+  }, [queryString, bankConnectionId]);
 
   useEffect(() => {
     void load();
@@ -73,6 +74,8 @@ export function TagsClient() {
     );
   }
 
+  const categoriesParams = applySpendingPeriod(new URLSearchParams(), period);
+  if (bankConnectionId) categoriesParams.set("bank", bankConnectionId);
   const bankQuery = bankConnectionId ? `&bank=${bankConnectionId}` : "";
 
   return (
@@ -80,10 +83,10 @@ export function TagsClient() {
       {error ? <div className="alert alert-error">{error}</div> : null}
 
       <div className="spending-subnav">
-        <Link href="/spending" className="tag-chip">
+        <Link href={`/spending?${categoriesParams.toString()}`} className="tag-chip">
           Categories
         </Link>
-        <Link href="/spending/tags" className="tag-chip active">
+        <Link href={`/spending/tags?${categoriesParams.toString()}`} className="tag-chip active">
           Tags
         </Link>
       </div>
@@ -95,18 +98,7 @@ export function TagsClient() {
             <h2 className="spending-total">{tags.length} tags</h2>
           </div>
         </div>
-        <div className="range-tabs">
-          {SPENDING_RANGES.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`range-tab${range === option.id ? " active" : ""}`}
-              onClick={() => setRange(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <PeriodPicker period={period} onChange={setPeriod} />
         <label className="login-label" style={{ marginTop: "1rem" }}>
           New tag
           <div className="tag-chip-row">
@@ -137,7 +129,7 @@ export function TagsClient() {
           summaries.map((summary) => (
             <Link
               key={summary.tag.id}
-              href={`/spending/tags/${summary.tag.id}?range=${range}${bankQuery}`}
+              href={`/spending/tags/${summary.tag.id}?${queryString}${bankQuery}`}
               className="spending-category-row"
             >
               <div className="spending-category-main">

@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 const links = [
   { href: "/wealth", label: "Overview" },
   { href: "/wealth/budget", label: "Budget" },
-  { href: "/wealth/habits", label: "Habits" },
+  { href: "/wealth/habits", label: "Leaks" },
   { href: "/wealth/bills", label: "Bills" },
   { href: "/wealth/goals", label: "Goals" },
   { href: "/wealth/net-worth", label: "Net worth" },

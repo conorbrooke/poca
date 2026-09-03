@@ -32,6 +32,16 @@ function toNumber(value: { toString(): string }): number {
   return parseFloat(value.toString());
 }
 
+function eur(value: number): string {
+  return `€${value.toFixed(2)}`;
+}
+
+function monthName(year: number, month: number): string {
+  return new Date(year, month - 1, 1).toLocaleDateString("en-IE", {
+    month: "long",
+  });
+}
+
 function monthBounds(year: number, month: number) {
   const periodStart = new Date(year, month - 1, 1);
   periodStart.setHours(0, 0, 0, 0);
@@ -107,7 +117,8 @@ export class WealthService {
       essentialMonthly,
       emergencyTarget,
       emergencySaved,
-      habitAlerts: habits.alerts.length,
+      habitAlerts: habits.actions.filter((action) => action.severity === "high")
+        .length,
     };
   }
 
@@ -250,60 +261,308 @@ export class WealthService {
     const previous = shiftMonth(period.year, period.month, -1);
     const currentBounds = monthBounds(period.year, period.month);
     const previousBounds = monthBounds(previous.year, previous.month);
-    const [budget, merchants, previousMerchants, timeSplit, leaks] = await Promise.all([
+    const now = new Date();
+    const isCurrentMonth =
+      now.getFullYear() === period.year && now.getMonth() + 1 === period.month;
+    const monthQuery = `year=${period.year}&month=${period.month}`;
+
+    const [
+      budget,
+      merchants,
+      previousMerchants,
+      time,
+      leaks,
+      cashflow,
+      previousCashflow,
+      previousExpenseRows,
+    ] = await Promise.all([
       this.getBudget(period.year, period.month),
       this.merchantTotals(userId, currentBounds.periodStart, currentBounds.periodEnd),
-      this.merchantTotals(userId, previousBounds.periodStart, previousBounds.periodEnd),
-      this.weekdaySplit(userId, currentBounds.periodStart, currentBounds.periodEnd),
+      this.merchantTotals(
+        userId,
+        previousBounds.periodStart,
+        previousBounds.periodEnd,
+      ),
+      this.timePatterns(userId, currentBounds.periodStart, currentBounds.periodEnd),
       this.leakTotals(userId, currentBounds.periodStart, currentBounds.periodEnd),
+      this.getCashflow(userId, period.year, period.month),
+      this.getCashflow(userId, previous.year, previous.month),
+      this.categoryTotals(
+        userId,
+        previousBounds.periodStart,
+        previousBounds.periodEnd,
+        CategoryKind.EXPENSE,
+      ),
     ]);
 
-    const previousByPayee = new Map(previousMerchants.map((row) => [row.payee, row.total]));
+    const previousByPayee = new Map(
+      previousMerchants.map((row) => [row.payee, row]),
+    );
+    const previousByCategory = new Map(
+      previousExpenseRows.map((row) => [row.categoryId, row.total]),
+    );
+
     const overBudget = budget.lines
       .filter((line) => line.amount > 0 && line.spent > line.amount)
       .map((line) => ({
-        type: "over-budget" as const,
-        title: `${line.name} is over budget`,
-        detail: `€${line.spent.toFixed(2)} spent of €${line.amount.toFixed(2)}`,
+        categoryId: line.categoryId,
+        name: line.name,
+        spent: line.spent,
+        amount: line.amount,
+        overBy: Math.round((line.spent - line.amount) * 100) / 100,
+        href: `/spending/${line.categoryId}?${monthQuery}`,
       }));
 
-    const repeats = merchants.slice(0, 8).map((row) => {
-      const last = previousByPayee.get(row.payee) ?? 0;
+    const unbudgeted = budget.lines
+      .filter(
+        (line) =>
+          line.amount === 0 &&
+          line.spent >= 150 &&
+          !["atm", "other"].includes(line.name.toLowerCase()),
+      )
+      .sort((left, right) => right.spent - left.spent)
+      .slice(0, 3);
+
+    const merchantRows = merchants.slice(0, 12).map((row) => {
+      const last = previousByPayee.get(row.payee);
+      const previousTotal = last?.total ?? 0;
+      const delta = Math.round((row.total - previousTotal) * 100) / 100;
       return {
         payee: row.payee,
         count: row.count,
         total: row.total,
-        previousTotal: last,
+        previousTotal,
+        delta,
+        isNew: previousTotal === 0 && row.count >= 2 && row.total >= 25,
+        isFrequent: row.count >= 4,
+        jumped: previousTotal > 0 && row.total >= previousTotal * 1.4 && delta >= 25,
       };
     });
 
-    const alerts = [
-      ...overBudget,
-      ...leaks
-        .filter((leak) => leak.total > 0)
-        .map((leak) => ({
-          type: "leak" as const,
-          title: leak.label,
-          detail: `€${leak.total.toFixed(2)} this month · ${leak.count} times`,
-        })),
-    ];
+    const totalSpend = time.weekday + time.weekend;
+    const weekendShare =
+      totalSpend > 0 ? Math.round((time.weekend / totalSpend) * 100) : 0;
+    const lateShare =
+      time.early + time.late > 0
+        ? Math.round((time.late / (time.early + time.late)) * 100)
+        : 0;
+    const tooEarlyForLateMonth = isCurrentMonth && now.getDate() < 22;
+
+    const leakRows = leaks.map((leak) => {
+      const href =
+        leak.id === "revolut"
+          ? "/guide"
+          : leak.categoryId
+            ? `/spending/${leak.categoryId}?${monthQuery}`
+            : `/spending?${monthQuery}`;
+      if (leak.id === "revolut") {
+        return {
+          ...leak,
+          href,
+          why: "A BOI (or other bank) card payment to Revolut is a top-up, not spending. If it stays as an expense, the same money is counted twice when you spend it from Revolut.",
+          doNext: "Open the guide, then recategorise these as Transfer.",
+        };
+      }
+      if (leak.id === "atm") {
+        return {
+          ...leak,
+          href,
+          why: "Cash out is unplaced spending. Until you assign it (groceries, nights out, etc.), your budget cannot see where it went.",
+          doNext: "Open ATM and recategorise or split the withdrawals you remember.",
+        };
+      }
+      return {
+        ...leak,
+        href,
+        why: "Other is a holding pen. Money parked here does not inform a grocery, dining, or fuel budget.",
+        doNext: "Open Other and give each line a real category.",
+      };
+    });
+
+    type Action = {
+      id: string;
+      severity: "high" | "medium" | "ok";
+      title: string;
+      why: string;
+      doNext: string;
+      href: string;
+      amount: number;
+    };
+    const actions: Action[] = [];
 
     if (budget.overallCap && budget.totalSpent > budget.overallCap) {
-      alerts.unshift({
-        type: "over-budget",
+      actions.push({
+        id: "cap",
+        severity: "high",
         title: "Overall monthly cap exceeded",
-        detail: `€${budget.totalSpent.toFixed(2)} spent of €${budget.overallCap.toFixed(2)}`,
+        why: `${eur(budget.totalSpent)} spent against a ${eur(budget.overallCap)} cap.`,
+        doNext: "Open the budget and cut a flexible category, or raise the cap if it was too tight.",
+        href: `/wealth/budget?${monthQuery}`,
+        amount: budget.totalSpent - budget.overallCap,
       });
     }
+
+    for (const leak of leakRows) {
+      if (leak.total <= 0) continue;
+      actions.push({
+        id: `leak-${leak.id}`,
+        severity: leak.total >= 50 ? "high" : "medium",
+        title: leak.label,
+        why: leak.why,
+        doNext: leak.doNext,
+        href: leak.href,
+        amount: leak.total,
+      });
+    }
+
+    for (const line of overBudget) {
+      actions.push({
+        id: `budget-${line.categoryId}`,
+        severity: line.overBy >= 40 ? "high" : "medium",
+        title: `${line.name} is over budget`,
+        why: `${eur(line.spent)} spent of ${eur(line.amount)} — ${eur(line.overBy)} over.`,
+        doNext: "See the merchants in this category, then either recategorise mistakes or trim next month’s budget.",
+        href: line.href,
+        amount: line.overBy,
+      });
+    }
+
+    for (const line of unbudgeted) {
+      actions.push({
+        id: `unbudgeted-${line.categoryId}`,
+        severity: "medium",
+        title: `${line.name} has spend but no budget`,
+        why: `${eur(line.spent)} went here with €0 budgeted, so overspend alerts never fire.`,
+        doNext: "Set a monthly amount on the budget page.",
+        href: `/wealth/budget?${monthQuery}`,
+        amount: line.spent,
+      });
+    }
+
+    const jumpedMerchant = merchantRows.find((row) => row.jumped);
+    if (jumpedMerchant) {
+      actions.push({
+        id: `merchant-${jumpedMerchant.payee}`,
+        severity: "medium",
+        title: `${jumpedMerchant.payee} jumped vs last month`,
+        why: `${eur(jumpedMerchant.total)} this month vs ${eur(jumpedMerchant.previousTotal)} last month.`,
+        doNext: "Check whether this is a one-off, a bill spike, or a habit worth cutting.",
+        href: `/spending?${monthQuery}`,
+        amount: jumpedMerchant.delta,
+      });
+    }
+
+    if (weekendShare >= 50 && time.weekend >= 80) {
+      actions.push({
+        id: "weekend",
+        severity: "medium",
+        title: "Weekends are taking a large share",
+        why: `${weekendShare}% of expense spend landed Friday–Sunday (${eur(time.weekend)}). Three days of the week are ~43% of days.`,
+        doNext: "Scan restaurants, takeaways, and pubs on the spending page for Friday–Sunday.",
+        href: `/spending?${monthQuery}`,
+        amount: time.weekend,
+      });
+    }
+
+    if (!tooEarlyForLateMonth && lateShare >= 45 && time.late >= 80) {
+      actions.push({
+        id: "late-month",
+        severity: "medium",
+        title: "Spending piled up after the 21st",
+        why: `${lateShare}% of spend was in the last third of the month (${eur(time.late)}).`,
+        doNext: "If payday is monthly, this is the squeeze — lock a leftover target before the 22nd.",
+        href: `/wealth/budget?${monthQuery}`,
+        amount: time.late,
+      });
+    }
+
+    actions.sort((left, right) => {
+      const rank = { high: 0, medium: 1, ok: 2 };
+      if (rank[left.severity] !== rank[right.severity]) {
+        return rank[left.severity] - rank[right.severity];
+      }
+      return right.amount - left.amount;
+    });
+
+    if (actions.length === 0) {
+      const delta = cashflow.spending - previousCashflow.spending;
+      actions.push({
+        id: "ok",
+        severity: "ok",
+        title: "No leaks worth acting on this month",
+        why:
+          delta > 10
+            ? `Spending is ${eur(delta)} higher than ${monthName(previous.year, previous.month)}, but nothing is over budget or sitting in ATM/Other/Revolut.`
+            : "Budgets, categorisation, and merchant totals look in line. Use this page again mid-month.",
+        doNext: "Keep categorising new lines as they sync so next month’s check stays honest.",
+        href: `/spending?${monthQuery}`,
+        amount: 0,
+      });
+    }
+
+    const surplusEaters = budget.lines
+      .filter((line) => line.spent > 0)
+      .sort((left, right) => right.spent - left.spent)
+      .slice(0, 6)
+      .map((line) => {
+        const previousTotal = previousByCategory.get(line.categoryId) ?? 0;
+        return {
+          categoryId: line.categoryId,
+          name: line.name,
+          total: line.spent,
+          previousTotal,
+          delta: Math.round((line.spent - previousTotal) * 100) / 100,
+          href: `/spending/${line.categoryId}?${monthQuery}`,
+        };
+      });
+
+    const weekendInsight =
+      totalSpend === 0
+        ? "No expense spend in this month yet."
+        : weekendShare >= 50
+          ? "Friday–Sunday is heavier than a flat daily split. That is usually dining, drink, or shopping."
+          : "Monday–Thursday is carrying most of the month — typical for commuting, groceries, and bills.";
+
+    const lateInsight = tooEarlyForLateMonth
+      ? "Too early in the month to judge a late-month squeeze."
+      : lateShare >= 45
+        ? "A large share landed after the 21st. Check whether that is bills, a trip, or drift."
+        : "Spend is reasonably spread across the month.";
 
     return {
       year: period.year,
       month: period.month,
-      alerts,
+      income: cashflow.income,
+      spending: cashflow.spending,
+      surplus: Math.round((cashflow.income - cashflow.spending) * 100) / 100,
+      previousSpending: previousCashflow.spending,
+      spendingDelta:
+        Math.round((cashflow.spending - previousCashflow.spending) * 100) / 100,
+      actions,
+      alerts: actions
+        .filter((action) => action.severity === "high")
+        .map((action) => ({
+          type: action.id.startsWith("leak") ? "leak" : "over-budget",
+          title: action.title,
+          detail: action.why,
+        })),
       overBudget,
-      merchants: repeats,
-      weekday: timeSplit,
-      leaks,
+      merchants: merchantRows,
+      weekday: {
+        weekday: time.weekday,
+        weekend: time.weekend,
+        weekendShare,
+        insight: weekendInsight,
+      },
+      time: {
+        early: time.early,
+        late: time.late,
+        lateShare,
+        tooEarly: tooEarlyForLateMonth,
+        insight: lateInsight,
+      },
+      leaks: leakRows,
+      surplusEaters,
     };
   }
 
@@ -882,7 +1141,7 @@ export class WealthService {
       .sort((left, right) => right.total - left.total);
   }
 
-  private async weekdaySplit(userId: string, periodStart: Date, periodEnd: Date) {
+  private async timePatterns(userId: string, periodStart: Date, periodEnd: Date) {
     const rates = await this.fx.getRates();
     const rows = await this.prisma.transaction.findMany({
       where: {
@@ -895,15 +1154,21 @@ export class WealthService {
     });
     let weekend = 0;
     let weekday = 0;
+    let early = 0;
+    let late = 0;
     for (const row of rows) {
       const amount = Math.abs(this.fx.toEur(toNumber(row.amount), row.currency, rates));
       const day = row.bookedAt.getDay();
-      if (day === 0 || day === 6) weekend += amount;
+      if (day === 0 || day === 5 || day === 6) weekend += amount;
       else weekday += amount;
+      if (row.bookedAt.getDate() >= 22) late += amount;
+      else early += amount;
     }
     return {
       weekday: Math.round(weekday * 100) / 100,
       weekend: Math.round(weekend * 100) / 100,
+      early: Math.round(early * 100) / 100,
+      late: Math.round(late * 100) / 100,
     };
   }
 
@@ -921,14 +1186,32 @@ export class WealthService {
         currency: true,
         payeeLabel: true,
         description: true,
-        category: { select: { name: true } },
+        category: { select: { id: true, name: true } },
       },
     });
 
     const buckets = {
-      atm: { label: "ATM cash you haven't placed", total: 0, count: 0 },
-      other: { label: "Still in Other", total: 0, count: 0 },
-      revolut: { label: "Revolut card top-ups", total: 0, count: 0 },
+      atm: {
+        id: "atm" as const,
+        label: "ATM cash not assigned",
+        total: 0,
+        count: 0,
+        categoryId: null as string | null,
+      },
+      other: {
+        id: "other" as const,
+        label: "Still sitting in Other",
+        total: 0,
+        count: 0,
+        categoryId: null as string | null,
+      },
+      revolut: {
+        id: "revolut" as const,
+        label: "Revolut card top-ups counted as spend",
+        total: 0,
+        count: 0,
+        categoryId: null as string | null,
+      },
     };
 
     for (const row of rows) {
@@ -938,11 +1221,13 @@ export class WealthService {
       if (category === "atm") {
         buckets.atm.total += amount;
         buckets.atm.count += 1;
+        buckets.atm.categoryId = row.category?.id ?? buckets.atm.categoryId;
       } else if (category === "other") {
         buckets.other.total += amount;
         buckets.other.count += 1;
+        buckets.other.categoryId = row.category?.id ?? buckets.other.categoryId;
       }
-      if (/revolut/.test(haystack)) {
+      if (/revolut/.test(haystack) && category !== "atm") {
         buckets.revolut.total += amount;
         buckets.revolut.count += 1;
       }

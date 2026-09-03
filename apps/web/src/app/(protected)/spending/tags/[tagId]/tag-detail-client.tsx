@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { SPENDING_RANGES } from "@poca/shared";
+import { applySpendingPeriod, spendingPeriodLabel } from "@poca/shared";
+import { PeriodPicker } from "../../../../../components/period-picker";
 import { SelectableTransactionList } from "../../../../../components/selectable-transaction-list";
 import { apiFetch } from "../../../../../lib/api";
 import { formatMoney } from "../../../../../lib/format";
-import { useSpendingRange } from "../../../../../lib/spending-range";
+import { useSpendingPeriod } from "../../../../../lib/spending-period";
 import type {
   CategoryOption,
   SpendingTransaction,
@@ -20,7 +21,7 @@ type TagDetailClientProps = {
 
 export function TagDetailClient({ tagId }: TagDetailClientProps) {
   const searchParams = useSearchParams();
-  const [range] = useSpendingRange(searchParams.get("range"));
+  const { period, setPeriod, queryString } = useSpendingPeriod();
   const bankConnectionId = searchParams.get("bank") ?? undefined;
 
   const [detail, setDetail] = useState<TagSummaryResponse | null>(null);
@@ -34,7 +35,7 @@ export function TagDetailClient({ tagId }: TagDetailClientProps) {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ range });
+      const params = new URLSearchParams(queryString);
       if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
       const [summary, categoryList, txRes] = await Promise.all([
         apiFetch<TagSummaryResponse>(`/spending/tags/${tagId}?${params.toString()}`),
@@ -52,7 +53,7 @@ export function TagDetailClient({ tagId }: TagDetailClientProps) {
     } finally {
       setLoading(false);
     }
-  }, [tagId, range, bankConnectionId]);
+  }, [tagId, queryString, bankConnectionId]);
 
   useEffect(() => {
     void loadData();
@@ -76,9 +77,9 @@ export function TagDetailClient({ tagId }: TagDetailClientProps) {
     );
   }
 
-  const backHref = bankConnectionId
-    ? `/spending/tags?bank=${bankConnectionId}`
-    : "/spending/tags";
+  const backParams = applySpendingPeriod(new URLSearchParams(), period);
+  if (bankConnectionId) backParams.set("bank", bankConnectionId);
+  const backHref = `/spending/tags?${backParams.toString()}`;
 
   return (
     <div>
@@ -103,11 +104,11 @@ export function TagDetailClient({ tagId }: TagDetailClientProps) {
             <h2 className="spending-total">{detail.tag.name}</h2>
             <p className="bank-meta">
               {formatMoney(detail.totalSpent)} · {detail.transactionCount}{" "}
-              transactions ·{" "}
-              {SPENDING_RANGES.find((r) => r.id === range)?.label ?? range}
+              transactions · {detail.periodLabel ?? spendingPeriodLabel(period)}
             </p>
           </div>
         </div>
+        <PeriodPicker period={period} onChange={setPeriod} />
       </div>
 
       <h2 className="section-title">By category</h2>
@@ -120,7 +121,7 @@ export function TagDetailClient({ tagId }: TagDetailClientProps) {
           detail.categories.map((category) => (
             <Link
               key={category.id}
-              href={`/spending/${category.id}?range=${range}&tagIds=${tagId}${bankConnectionId ? `&bank=${bankConnectionId}` : ""}`}
+              href={`/spending/${category.id}?${applySpendingPeriod(new URLSearchParams(), period).toString()}&tagIds=${tagId}${bankConnectionId ? `&bank=${bankConnectionId}` : ""}`}
               className="payee-row"
             >
               <div>

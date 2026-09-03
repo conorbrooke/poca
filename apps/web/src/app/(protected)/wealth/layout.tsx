@@ -10,8 +10,8 @@ export default function WealthLayout({
         <p className="page-eyebrow">Keep more · Grow more</p>
         <h1 className="page-title">Wealth</h1>
         <p className="page-subtitle">
-          Budgets, habits, savings, net worth, pension, and holdings — built for
-          a single Irish household, not a tax return.
+          Budgets, spending leaks, savings, net worth, pension, and holdings —
+          built for a single Irish household, not a tax return.
         </p>
       </header>
       <Suspense fallback={null}>

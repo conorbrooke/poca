@@ -118,6 +118,7 @@ export type {
   CategoryDetailResponse,
   SpendingCategorySummary,
   SpendingPayeeSummary,
+  SpendingPeriodKind,
   SpendingRangeId,
   SpendingTransaction,
   TransactionDetail,

@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { SPENDING_RANGES } from "@poca/shared";
+import { applySpendingPeriod, spendingPeriodLabel } from "@poca/shared";
 import { AddCategoryForm } from "../../../components/add-category-form";
+import { PeriodPicker } from "../../../components/period-picker";
 import { SelectableTransactionList } from "../../../components/selectable-transaction-list";
 import { TransfersSection } from "../../../components/transfers-section";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
-import { useSpendingRange } from "../../../lib/spending-range";
+import { useSpendingPeriod } from "../../../lib/spending-period";
 import type {
   CategoryOption,
   SpendingCategorySummary,
@@ -19,7 +20,7 @@ import type {
 
 export function IncomeClient() {
   const searchParams = useSearchParams();
-  const [range, setRange] = useSpendingRange(searchParams.get("range"));
+  const { period, setPeriod, queryString } = useSpendingPeriod();
   const [data, setData] = useState<SpendingSummaryResponse | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [transactions, setTransactions] = useState<SpendingTransaction[]>([]);
@@ -32,10 +33,11 @@ export function IncomeClient() {
   const bankConnectionId = searchParams.get("bank") ?? undefined;
 
   const summaryParams = useCallback(() => {
-    const params = new URLSearchParams({ range, flow: "in" });
+    const params = new URLSearchParams(queryString);
+    params.set("flow", "in");
     if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
     return params;
-  }, [range, bankConnectionId]);
+  }, [queryString, bankConnectionId]);
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
@@ -146,7 +148,8 @@ export function IncomeClient() {
     ...unusedIncomeCategories,
   ];
   const categoryHref = (categoryId: string) => {
-    const params = new URLSearchParams({ range, flow: "in" });
+    const params = applySpendingPeriod(new URLSearchParams(), period);
+    params.set("flow", "in");
     if (bankConnectionId) params.set("bank", bankConnectionId);
     return `/income/${categoryId}?${params.toString()}`;
   };
@@ -165,24 +168,13 @@ export function IncomeClient() {
             <p className="bank-meta">
               {data?.transactionCount ?? 0} income transaction
               {(data?.transactionCount ?? 0) === 1 ? "" : "s"} ·{" "}
-              {SPENDING_RANGES.find((item) => item.id === range)?.label ?? range}
+              {data?.periodLabel ?? spendingPeriodLabel(period)}
               · transfers excluded · EUR at today's rates
             </p>
           </div>
         </div>
 
-        <div className="range-tabs">
-          {SPENDING_RANGES.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`range-tab${range === option.id ? " active" : ""}`}
-              onClick={() => setRange(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <PeriodPicker period={period} onChange={setPeriod} />
       </div>
 
       {data && data.totalTransferred > 0 ? (
@@ -193,7 +185,7 @@ export function IncomeClient() {
           }
           totalTransferred={data.totalTransferred}
           transferTransactionCount={data.transferTransactionCount}
-          range={range}
+          period={period}
           bankConnectionId={bankConnectionId}
           flow="in"
         />

@@ -6,8 +6,8 @@ import {
 import type {
   CategoryDetailResponse,
   ReplaceSplitsInput,
+  ResolvedSpendingPeriod,
   SpendingQuery,
-  SpendingRangeId,
   SpendingSummaryResponse,
   SpendingTransaction,
   SpendingTransactionsQuery,
@@ -48,7 +48,8 @@ export class SpendingService {
     query: SpendingQuery,
   ): Promise<SpendingSummaryResponse> {
     await this.categoriesService.ensureDefaults(userId);
-    const { periodStart, periodEnd } = resolveSpendingPeriod(query.range);
+    const period = resolveSpendingPeriod(query);
+    const { periodStart, periodEnd } = period;
     const bankConnectionId = query.bankConnectionId ?? null;
     const tagIds = query.tagIds;
     const flow = query.flow ?? "out";
@@ -57,7 +58,7 @@ export class SpendingService {
       const cached = await this.prisma.categoryPeriodStat.findMany({
         where: {
           userId,
-          rangeType: query.range,
+          rangeType: period.cacheKey,
           periodStart: toDateOnly(periodStart),
           periodEnd: toDateOnly(periodEnd),
           bankConnectionId,
@@ -71,9 +72,7 @@ export class SpendingService {
         this.fx.isConvertedCacheFresh(cached[0]!.computedAt)
       ) {
         return this.buildSummaryFromRows(
-          query.range,
-          periodStart,
-          periodEnd,
+          period,
           cached.map((row) => ({
             category: row.category,
             totalSpent: toNumber(row.totalSpent),
@@ -87,7 +86,7 @@ export class SpendingService {
 
     return this.computeAndCacheSummary(
       userId,
-      query.range,
+      period,
       bankConnectionId,
       tagIds,
       flow,
@@ -112,7 +111,8 @@ export class SpendingService {
         ? summary.transfersCategory
         : undefined) ??
       summary.reviewCategories.find((item) => item.id === categoryId);
-    const { periodStart, periodEnd } = resolveSpendingPeriod(query.range);
+    const period = resolveSpendingPeriod(query);
+    const { periodStart, periodEnd } = period;
     const bankConnectionId = query.bankConnectionId ?? null;
     const flow = query.flow ?? "out";
 
@@ -122,7 +122,7 @@ export class SpendingService {
         where: {
           userId,
           categoryId,
-          rangeType: query.range,
+          rangeType: period.cacheKey,
           periodStart: toDateOnly(periodStart),
           periodEnd: toDateOnly(periodEnd),
           bankConnectionId,
@@ -167,7 +167,8 @@ export class SpendingService {
         isSystem: category.isSystem,
         kind: category.kind,
       },
-      range: query.range,
+      range: period.kind,
+      periodLabel: period.label,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
       totalSpent,
@@ -190,7 +191,7 @@ export class SpendingService {
     query: SpendingTransactionsQuery,
     categoryId?: string,
   ) {
-    const { periodStart, periodEnd } = resolveSpendingPeriod(query.range);
+    const { periodStart, periodEnd } = resolveSpendingPeriod(query);
     const accountWhere: Prisma.AccountWhereInput = {
       userId,
       ...(query.bankConnectionId ? { bankConnectionId: query.bankConnectionId } : {}),
@@ -469,19 +470,19 @@ export class SpendingService {
 
   private async computeAndCacheSummary(
     userId: string,
-    range: SpendingRangeId,
+    period: ResolvedSpendingPeriod,
     bankConnectionId: string | null,
     tagIds: string[] | undefined,
     flow: CashFlow,
   ): Promise<SpendingSummaryResponse> {
-    const { periodStart, periodEnd } = resolveSpendingPeriod(range);
+    const { periodStart, periodEnd } = period;
     const persistCache = flow === "out" && !tagIds?.length;
 
     if (persistCache) {
       await this.prisma.categoryPeriodStat.deleteMany({
         where: {
           userId,
-          rangeType: range,
+          rangeType: period.cacheKey,
           periodStart: toDateOnly(periodStart),
           periodEnd: toDateOnly(periodEnd),
           bankConnectionId,
@@ -505,7 +506,7 @@ export class SpendingService {
             userId,
             categoryId: row.category.id,
             bankConnectionId,
-            rangeType: range,
+            rangeType: period.cacheKey,
             periodStart: toDateOnly(periodStart),
             periodEnd: toDateOnly(periodEnd),
             totalSpent: row.totalSpent,
@@ -523,9 +524,7 @@ export class SpendingService {
     }
 
     return this.buildSummaryFromRows(
-      range,
-      periodStart,
-      periodEnd,
+      period,
       allGrouped.map((row) => ({
         category: row.category,
         totalSpent: row.totalSpent,
@@ -659,9 +658,7 @@ export class SpendingService {
   }
 
   private buildSummaryFromRows(
-    range: SpendingRangeId,
-    periodStart: Date,
-    periodEnd: Date,
+    period: ResolvedSpendingPeriod,
     rows: Array<{
       category: {
         id: string;
@@ -725,9 +722,10 @@ export class SpendingService {
     const reviewTotal = reviewRows.reduce((sum, row) => sum + row.totalSpent, 0);
 
     return {
-      range,
-      periodStart: periodStart.toISOString(),
-      periodEnd: periodEnd.toISOString(),
+      range: period.kind,
+      periodLabel: period.label,
+      periodStart: period.periodStart.toISOString(),
+      periodEnd: period.periodEnd.toISOString(),
       flow,
       totalSpent,
       totalTransferred,

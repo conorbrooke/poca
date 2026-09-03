@@ -79,7 +79,8 @@ export class TagsService {
     query: SpendingQuery,
   ): Promise<TagSummaryResponse> {
     const tag = await this.requireTag(userId, tagId);
-    const { periodStart, periodEnd } = resolveSpendingPeriod(query.range);
+    const period = resolveSpendingPeriod(query);
+    const { periodStart, periodEnd } = period;
     const accountFilter: Prisma.AccountWhereInput = {
       userId,
       ...(query.bankConnectionId ? { bankConnectionId: query.bankConnectionId } : {}),
@@ -177,7 +178,8 @@ export class TagsService {
 
     return {
       tag: mapTag(tag),
-      range: query.range,
+      range: period.kind,
+      periodLabel: period.label,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
       totalSpent,

@@ -163,7 +163,8 @@ export class TransfersService {
     userId: string,
     query: TransfersQuery,
   ): Promise<TransfersSummaryResponse> {
-    const { periodStart, periodEnd } = resolveSpendingPeriod(query.range);
+    const period = resolveSpendingPeriod(query);
+    const { periodStart, periodEnd } = period;
     const accountFilter = query.bankConnectionId
       ? { userId, bankConnectionId: query.bankConnectionId }
       : { userId };
@@ -208,7 +209,8 @@ export class TransfersService {
     const unlinkedCount = transfers.length - linkedCount;
 
     return {
-      range: query.range,
+      range: period.kind,
+      periodLabel: period.label,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
       totalTransferred,

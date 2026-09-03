@@ -50,11 +50,13 @@ export function WealthDashboardStrip() {
           value={formatMoney(data.netWorth)}
           tone="balance"
         />
-        <StatCard
-          label="Habit alerts"
-          value={String(data.habitAlerts)}
-          hint={data.habitAlerts > 0 ? "Review Wealth → Habits" : "None this month"}
-        />
+        <Link href="/wealth/habits" className="stat-card-link">
+          <StatCard
+            label="Spending leaks"
+            value={String(data.habitAlerts)}
+            hint={data.habitAlerts > 0 ? "Open the spending check" : "None this month"}
+          />
+        </Link>
       </div>
     </div>
   );

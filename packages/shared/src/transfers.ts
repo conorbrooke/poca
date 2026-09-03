@@ -81,6 +81,7 @@ export type TransferLinkSummary = {
 
 export type TransfersSummaryResponse = {
   range: string;
+  periodLabel?: string;
   periodStart: string;
   periodEnd: string;
   totalTransferred: number;

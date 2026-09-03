@@ -3,26 +3,26 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { SPENDING_RANGES } from "@poca/shared";
+import {
+  applySpendingPeriod,
+  spendingPeriodLabel,
+  type ClientSpendingPeriod,
+} from "@poca/shared";
 import { AddCategoryForm } from "../../../components/add-category-form";
+import { PeriodPicker } from "../../../components/period-picker";
 import { TransfersSection } from "../../../components/transfers-section";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
-import { useSpendingRange } from "../../../lib/spending-range";
+import { useSpendingPeriod } from "../../../lib/spending-period";
 import type {
   SpendingCategorySummary,
   SpendingSummaryResponse,
   TagOption,
 } from "../../../lib/types";
 
-type SpendingClientProps = {
-  initialRange?: string;
-};
-
-export function SpendingClient({ initialRange }: SpendingClientProps) {
+export function SpendingClient() {
   const searchParams = useSearchParams();
-  const urlRange = searchParams.get("range") ?? initialRange ?? null;
-  const [range, setRange] = useSpendingRange(urlRange);
+  const { period, setPeriod, queryString } = useSpendingPeriod();
   const [data, setData] = useState<SpendingSummaryResponse | null>(null);
   const [tags, setTags] = useState<TagOption[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -35,7 +35,7 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ range });
+      const params = new URLSearchParams(queryString);
       if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
       if (selectedTagIds.length > 0) params.set("tagIds", selectedTagIds.join(","));
       const [summary, tagList] = await Promise.all([
@@ -49,7 +49,7 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
     } finally {
       setLoading(false);
     }
-  }, [range, bankConnectionId, selectedTagIds]);
+  }, [queryString, bankConnectionId, selectedTagIds]);
 
   useEffect(() => {
     void loadSummary();
@@ -76,16 +76,17 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
 
   const categories = data?.categories ?? [];
   const otherCategory = categories.find((c) => c.name === "Other");
-  const tagsHref = bankConnectionId
-    ? `/spending/tags?bank=${bankConnectionId}`
-    : "/spending/tags";
+  const tagsParams = applySpendingPeriod(new URLSearchParams(), period);
+  if (bankConnectionId) tagsParams.set("bank", bankConnectionId);
+  const tagsHref = `/spending/tags?${tagsParams.toString()}`;
+  const periodLabel = data?.periodLabel ?? spendingPeriodLabel(period);
 
   return (
     <div>
       {error ? <div className="alert alert-error">{error}</div> : null}
 
       <div className="spending-subnav">
-        <Link href="/spending" className="tag-chip active">
+        <Link href={`/spending?${queryString}`} className="tag-chip active">
           Categories
         </Link>
         <Link href={tagsHref} className="tag-chip">
@@ -101,8 +102,7 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
               {formatMoney(data?.totalSpent ?? 0)}
             </h2>
             <p className="bank-meta">
-              {data?.transactionCount ?? 0} expense transactions ·{" "}
-              {SPENDING_RANGES.find((r) => r.id === range)?.label ?? range}
+              {data?.transactionCount ?? 0} expense transactions · {periodLabel}
               {" · EUR at today's rates"}
             </p>
           </div>
@@ -115,18 +115,7 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
           </button>
         </div>
 
-        <div className="range-tabs">
-          {SPENDING_RANGES.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`range-tab${range === option.id ? " active" : ""}`}
-              onClick={() => setRange(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <PeriodPicker period={period} onChange={setPeriod} />
       </div>
 
       {tags.length > 0 ? (
@@ -166,7 +155,7 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
           }
           totalTransferred={data.totalTransferred}
           transferTransactionCount={data.transferTransactionCount}
-          range={range}
+          period={period}
           bankConnectionId={bankConnectionId}
           tagIds={selectedTagIds}
           flow="out"
@@ -176,7 +165,9 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
       {otherCategory && otherCategory.totalSpent > 0 ? (
         <div className="alert alert-warning spending-other-banner">
           <strong>{formatMoney(otherCategory.totalSpent)}</strong> in{" "}
-          <Link href={`/spending/${otherCategory.id}?range=${range}`}>
+          <Link
+            href={`/spending/${otherCategory.id}?${categoryPeriodParams(period, bankConnectionId, selectedTagIds)}`}
+          >
             Other
           </Link>{" "}
           — review and assign categories to improve your breakdown.
@@ -194,7 +185,7 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
             <CategoryRow
               key={category.id}
               category={category}
-              range={range}
+              period={period}
               bankConnectionId={bankConnectionId}
               tagIds={selectedTagIds}
             />
@@ -212,24 +203,31 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
   );
 }
 
+function categoryPeriodParams(
+  period: ClientSpendingPeriod,
+  bankConnectionId?: string,
+  tagIds: string[] = [],
+) {
+  const params = applySpendingPeriod(new URLSearchParams(), period);
+  if (bankConnectionId) params.set("bank", bankConnectionId);
+  if (tagIds.length > 0) params.set("tagIds", tagIds.join(","));
+  return params.toString();
+}
+
 function CategoryRow({
   category,
-  range,
+  period,
   bankConnectionId,
   tagIds,
 }: {
   category: SpendingCategorySummary;
-  range: string;
+  period: ClientSpendingPeriod;
   bankConnectionId?: string;
   tagIds: string[];
 }) {
-  const params = new URLSearchParams({ range });
-  if (bankConnectionId) params.set("bank", bankConnectionId);
-  if (tagIds.length > 0) params.set("tagIds", tagIds.join(","));
-
   return (
     <Link
-      href={`/spending/${category.id}?${params.toString()}`}
+      href={`/spending/${category.id}?${categoryPeriodParams(period, bankConnectionId, tagIds)}`}
       className={`spending-category-row${category.isSystem ? " other" : ""}`}
     >
       <div className="spending-category-main">

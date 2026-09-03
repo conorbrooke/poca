@@ -261,6 +261,20 @@ button {
   box-shadow: var(--shadow-sm);
 }
 
+.stat-card-link {
+  color: inherit;
+  text-decoration: none;
+  display: contents;
+}
+
+.stat-card-link .stat-card {
+  transition: border-color 0.15s;
+}
+
+.stat-card-link:hover .stat-card {
+  border-color: var(--accent-dim);
+}
+
 .stat-label {
   font-size: 0.75rem;
   color: var(--muted);
@@ -906,6 +920,80 @@ button {
   background: var(--accent-glow);
   border-color: var(--accent-dim);
   color: var(--accent);
+}
+
+.period-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.period-month-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.period-custom-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+}
+
+.period-custom-hint {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .period-custom-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.habits-intro {
+  margin-bottom: 1.25rem;
+}
+
+.habits-howto {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.habits-howto-step {
+  padding: 0.9rem 1rem;
+}
+
+.habits-howto-step strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.habits-action {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.habits-action:hover .spending-category-name {
+  color: var(--accent);
+}
+
+.habits-delta.up {
+  color: var(--expense);
+}
+
+.habits-delta.down {
+  color: var(--income);
+}
+
+@media (max-width: 800px) {
+  .habits-howto {
+    grid-template-columns: 1fr;
+  }
 }
 
 .spending-other-banner {

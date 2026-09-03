@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  applySpendingPeriod,
+  type ClientSpendingPeriod,
+} from "@poca/shared";
 import { formatMoney } from "../lib/format";
 import type { SpendingCategorySummary } from "../lib/types";
 
@@ -6,7 +10,7 @@ type TransfersSectionProps = {
   transferCategories: SpendingCategorySummary[];
   totalTransferred: number;
   transferTransactionCount: number;
-  range: string;
+  period: ClientSpendingPeriod;
   bankConnectionId?: string;
   tagIds?: string[];
   flow: "out" | "in";
@@ -16,7 +20,7 @@ export function TransfersSection({
   transferCategories,
   totalTransferred,
   transferTransactionCount,
-  range,
+  period,
   bankConnectionId,
   tagIds = [],
   flow,
@@ -31,7 +35,7 @@ export function TransfersSection({
 
   if (transferCategories.length === 1) {
     const category = transferCategories[0]!;
-    const params = buildCategoryParams(range, flow, bankConnectionId, tagIds);
+    const params = buildCategoryParams(period, flow, bankConnectionId, tagIds);
 
     return (
       <Link
@@ -66,7 +70,7 @@ export function TransfersSection({
           <TransferCategoryRow
             key={category.id}
             category={category}
-            range={range}
+            period={period}
             bankConnectionId={bankConnectionId}
             tagIds={tagIds}
             basePath={basePath}
@@ -81,7 +85,7 @@ export function TransfersSection({
 export function TransferCategoryNav({
   transferCategories,
   activeCategoryId,
-  range,
+  period,
   bankConnectionId,
   tagIds,
   flow,
@@ -89,7 +93,7 @@ export function TransferCategoryNav({
 }: {
   transferCategories: SpendingCategorySummary[];
   activeCategoryId: string;
-  range: string;
+  period: ClientSpendingPeriod;
   bankConnectionId?: string;
   tagIds?: string[];
   flow: "out" | "in";
@@ -100,7 +104,7 @@ export function TransferCategoryNav({
   return (
     <div className="spending-subnav transfer-category-nav">
       {transferCategories.map((category) => {
-        const params = buildCategoryParams(range, flow, bankConnectionId, tagIds);
+        const params = buildCategoryParams(period, flow, bankConnectionId, tagIds);
         const active = category.id === activeCategoryId;
         return (
           <Link
@@ -119,20 +123,20 @@ export function TransferCategoryNav({
 
 function TransferCategoryRow({
   category,
-  range,
+  period,
   bankConnectionId,
   tagIds,
   basePath,
   flow,
 }: {
   category: SpendingCategorySummary;
-  range: string;
+  period: ClientSpendingPeriod;
   bankConnectionId?: string;
   tagIds: string[];
   basePath: string;
   flow: "out" | "in";
 }) {
-  const params = buildCategoryParams(range, flow, bankConnectionId, tagIds);
+  const params = buildCategoryParams(period, flow, bankConnectionId, tagIds);
 
   return (
     <Link
@@ -169,12 +173,12 @@ function TransferCategoryRow({
 }
 
 function buildCategoryParams(
-  range: string,
+  period: ClientSpendingPeriod,
   flow: "out" | "in",
   bankConnectionId?: string,
   tagIds: string[] = [],
 ) {
-  const params = new URLSearchParams({ range });
+  const params = applySpendingPeriod(new URLSearchParams(), period);
   if (flow === "in") params.set("flow", "in");
   if (bankConnectionId) params.set("bank", bankConnectionId);
   if (tagIds.length > 0) params.set("tagIds", tagIds.join(","));

@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { SPENDING_RANGES, categoryKindLabel, type CategoryKind } from "@poca/shared";
+import { applySpendingPeriod, categoryKindLabel, spendingPeriodLabel, type CategoryKind } from "@poca/shared";
 import { CategoryKindFields } from "../../../../components/category-kind-fields";
+import { PeriodPicker } from "../../../../components/period-picker";
 import { SelectableTransactionList } from "../../../../components/selectable-transaction-list";
 import { TransferCategoryNav } from "../../../../components/transfers-section";
 import { apiFetch } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
-import { useSpendingRange } from "../../../../lib/spending-range";
+import { useSpendingPeriod } from "../../../../lib/spending-period";
 import type {
   CategoryDetailResponse,
   CategoryOption,
@@ -26,7 +27,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [range] = useSpendingRange(searchParams.get("range"));
+  const { period, setPeriod, queryString } = useSpendingPeriod();
   const bankConnectionId = searchParams.get("bank") ?? undefined;
   const payeeFilter = searchParams.get("payee") ?? undefined;
   const tagIds = searchParams.get("tagIds") ?? undefined;
@@ -57,11 +58,12 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const [deletingCategory, setDeletingCategory] = useState(false);
 
   const metaParams = useCallback(() => {
-    const params = new URLSearchParams({ range, flow });
+    const params = new URLSearchParams(queryString);
+    params.set("flow", flow);
     if (bankConnectionId) params.set("bankConnectionId", bankConnectionId);
     if (tagIds) params.set("tagIds", tagIds);
     return params;
-  }, [range, flow, bankConnectionId, tagIds]);
+  }, [queryString, flow, bankConnectionId, tagIds]);
 
   const transactionParams = useCallback(() => {
     const params = metaParams();
@@ -70,7 +72,8 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   }, [metaParams, payeeFilter]);
 
   function setPayeeFilter(nextPayee: string | null) {
-    const params = new URLSearchParams({ range, flow });
+    const params = applySpendingPeriod(new URLSearchParams(), period);
+    params.set("flow", flow);
     if (bankConnectionId) params.set("bank", bankConnectionId);
     if (tagIds) params.set("tagIds", tagIds);
     if (nextPayee) params.set("payee", nextPayee);
@@ -198,10 +201,10 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
         method: "DELETE",
       });
       router.push(
-        `${categoryBase}?${new URLSearchParams({
-          range,
-          ...(bankConnectionId ? { bank: bankConnectionId } : {}),
-        }).toString()}`,
+        `${categoryBase}?${applySpendingPeriod(
+          new URLSearchParams(bankConnectionId ? { bank: bankConnectionId } : {}),
+          period,
+        ).toString()}`,
       );
       router.refresh();
     } catch (err) {
@@ -229,7 +232,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
     );
   }
 
-  const backParams = new URLSearchParams({ range });
+  const backParams = applySpendingPeriod(new URLSearchParams(), period);
   if (bankConnectionId) backParams.set("bank", bankConnectionId);
   const backHref = `${categoryBase}?${backParams.toString()}`;
 
@@ -249,7 +252,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
         <TransferCategoryNav
           transferCategories={transferCategories}
           activeCategoryId={categoryId}
-          range={range}
+          period={period}
           bankConnectionId={bankConnectionId}
           tagIds={tagIds?.split(",").filter(Boolean)}
           flow={flow}
@@ -282,7 +285,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
             <p className="bank-meta">
               {formatMoney(detail.totalSpent)} · {detail.transactionCount}{" "}
               {isTransferCategory ? "movements" : "transactions"} ·{" "}
-              {SPENDING_RANGES.find((r) => r.id === range)?.label ?? range}
+              {detail.periodLabel ?? spendingPeriodLabel(period)}
               {isTransferCategory
                 ? flow === "in"
                   ? " · excluded from earned income"
@@ -291,6 +294,7 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
             </p>
           </div>
         </div>
+        <PeriodPicker period={period} onChange={setPeriod} />
         <div className="category-edit-form">
           <label className="login-label">
             Name

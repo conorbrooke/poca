@@ -1,39 +1,7 @@
-import type { SpendingRangeId } from "@poca/shared";
-import { SPENDING_RANGES } from "@poca/shared";
-
-export function resolveSpendingPeriod(range: SpendingRangeId): {
-  periodStart: Date;
-  periodEnd: Date;
-} {
-  const periodEnd = new Date();
-  periodEnd.setHours(23, 59, 59, 999);
-
-  if (range === "all") {
-    return {
-      periodStart: new Date("2000-01-01T00:00:00.000Z"),
-      periodEnd,
-    };
-  }
-
-  const config = SPENDING_RANGES.find((item) => item.id === range);
-  const days = "days" in config! ? config.days : 30;
-
-  const periodStart = new Date(periodEnd);
-  periodStart.setDate(periodStart.getDate() - (days - 1));
-  periodStart.setHours(0, 0, 0, 0);
-
-  if (range === "week") {
-    const day = periodStart.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    periodStart.setDate(periodStart.getDate() + mondayOffset);
-  }
-
-  if (range === "month") {
-    periodStart.setDate(1);
-  }
-
-  return { periodStart, periodEnd };
-}
+export {
+  resolveSpendingPeriod,
+  type ResolvedSpendingPeriod,
+} from "@poca/shared";
 
 export function toDateOnly(date: Date): Date {
   return new Date(date.toISOString().slice(0, 10));

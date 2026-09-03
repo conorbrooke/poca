@@ -118,10 +118,10 @@ export function WealthOverviewClient() {
 
           {data.habitAlerts > 0 ? (
             <div className="alert alert-warning">
-              {data.habitAlerts} habit alert{data.habitAlerts === 1 ? "" : "s"} this
-              month.{" "}
+              {data.habitAlerts} spending leak{data.habitAlerts === 1 ? "" : "s"}{" "}
+              to clear this month.{" "}
               <Link href={`/wealth/habits?year=${year}&month=${month}`}>
-                Review habits
+                Open the spending check
               </Link>
             </div>
           ) : null}

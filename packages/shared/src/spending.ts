@@ -1,8 +1,10 @@
 import { z } from "zod";
+import type { SpendingPeriodKind } from "./period";
 import type { CategoryKind, TransactionTransferInfo } from "./transfers";
 
 export type { CategoryKind, TransactionTransferInfo } from "./transfers";
 
+/** @deprecated Rolling presets — UI uses calendar months + custom from/to instead */
 export const SPENDING_RANGES = [
   { id: "week", label: "This week", days: 7 },
   { id: "month", label: "This month", days: 30 },
@@ -12,9 +14,12 @@ export const SPENDING_RANGES = [
   { id: "all", label: "All time" },
 ] as const;
 
-export type SpendingRangeId = (typeof SPENDING_RANGES)[number]["id"];
-
 const rangeEnum = z.enum(["week", "month", "quarter", "6months", "year", "all"]);
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+function emptyToUndefined(value: unknown) {
+  return value == null || value === "" ? undefined : value;
+}
 
 function parseTagIds(value: unknown): string[] | undefined {
   if (value == null || value === "") return undefined;
@@ -25,8 +30,21 @@ function parseTagIds(value: unknown): string[] | undefined {
   return ids.length > 0 ? ids : undefined;
 }
 
-export const spendingQuerySchema = z.object({
-  range: rangeEnum.default("month"),
+export const spendingPeriodQuerySchema = z.object({
+  year: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(2000).max(2100).optional(),
+  ),
+  month: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(12).optional(),
+  ),
+  from: z.preprocess(emptyToUndefined, isoDate.optional()),
+  to: z.preprocess(emptyToUndefined, isoDate.optional()),
+  range: z.preprocess(emptyToUndefined, rangeEnum.optional()),
+});
+
+export const spendingQuerySchema = spendingPeriodQuerySchema.extend({
   bankConnectionId: z.string().min(1).optional(),
   tagIds: z.preprocess(parseTagIds, z.array(z.string().min(1)).optional()),
   flow: z.enum(["out", "in"]).default("out"),
@@ -89,14 +107,10 @@ export type BulkEditTransactionsInput = z.infer<
   typeof bulkEditTransactionsSchema
 >;
 
-export const spendingTransactionsQuerySchema = z.object({
-  range: rangeEnum.default("month"),
-  bankConnectionId: z.string().min(1).optional(),
+export const spendingTransactionsQuerySchema = spendingQuerySchema.extend({
   payeeLabel: z.string().min(1).optional(),
-  tagIds: z.preprocess(parseTagIds, z.array(z.string().min(1)).optional()),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().min(1).optional(),
-  flow: z.enum(["out", "in"]).default("out"),
 });
 
 export type SpendingTransactionsQuery = z.infer<
@@ -226,7 +240,8 @@ export type TransactionDetail = SpendingTransaction & {
 };
 
 export type SpendingSummaryResponse = {
-  range: SpendingRangeId;
+  range: SpendingPeriodKind;
+  periodLabel: string;
   periodStart: string;
   periodEnd: string;
   flow: "out" | "in";
@@ -251,7 +266,8 @@ export type CategoryDetailResponse = {
     isSystem: boolean;
     kind: CategoryKind;
   };
-  range: SpendingRangeId;
+  range: SpendingPeriodKind;
+  periodLabel: string;
   periodStart: string;
   periodEnd: string;
   totalSpent: number;
@@ -262,7 +278,8 @@ export type CategoryDetailResponse = {
 
 export type TagSummaryResponse = {
   tag: TagOption;
-  range: SpendingRangeId;
+  range: SpendingPeriodKind;
+  periodLabel: string;
   periodStart: string;
   periodEnd: string;
   totalSpent: number;
