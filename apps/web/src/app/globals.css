@@ -153,13 +153,14 @@ button {
 .nav-link {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.85rem;
+  gap: 0.35rem;
+  padding: 0.5rem 0.7rem;
   border-radius: 999px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
 }
 
 .nav-icon {
@@ -1380,6 +1381,264 @@ button {
   letter-spacing: -0.02em;
 }
 
+.guide-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: -0.5rem 0 1.5rem;
+}
+
+.guide-toc a {
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.guide-toc a:hover {
+  color: var(--text);
+  border-color: #64748b;
+}
+
+.guide-rule {
+  margin-bottom: 1.25rem;
+}
+
+.guide-section-title {
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  margin: 0.15rem 0 0.55rem;
+}
+
+.guide-kinds {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.85rem;
+  margin-top: 1.1rem;
+}
+
+.guide-kind-card {
+  display: block;
+  padding: 1rem 1.05rem 1.1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  min-height: 100%;
+}
+
+.guide-kind-card h3 {
+  font-size: 1.05rem;
+  margin-bottom: 0.35rem;
+}
+
+.guide-kind-card p:last-child {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.guide-kind-card.expense {
+  border-color: #fb7a7a44;
+}
+
+.guide-kind-card.income {
+  border-color: #4ae09a44;
+}
+
+.guide-kind-card.transfer {
+  border-color: #64748b66;
+}
+
+.guide-kind-card:hover {
+  background: var(--surface-hover);
+}
+
+.guide-kind-section,
+.guide-situation,
+.guide-lookup {
+  scroll-margin-top: calc(var(--nav-height) + 1rem);
+}
+
+#rule,
+#expense,
+#income,
+#transfer,
+#situations {
+  scroll-margin-top: calc(var(--nav-height) + 1rem);
+}
+
+.guide-kind-label.expense {
+  color: var(--expense);
+}
+
+.guide-kind-label.income {
+  color: var(--income);
+}
+
+.guide-kind-label.transfer {
+  color: #94a3b8;
+}
+
+.guide-example-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.1rem;
+}
+
+.guide-example-why {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 0 0.15rem;
+}
+
+.guide-tx {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.75rem 1rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(11, 16, 24, 0.45);
+}
+
+.guide-tx-label {
+  font-weight: 650;
+}
+
+.guide-tx-amount {
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.guide-tx-amount.expense {
+  color: var(--expense);
+}
+
+.guide-tx-amount.income {
+  color: var(--income);
+}
+
+.guide-tx-amount.transfer {
+  color: #cbd5e1;
+}
+
+.guide-kind-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.guide-kind-pill.expense {
+  color: #fecaca;
+  background: var(--danger-dim);
+}
+
+.guide-kind-pill.income {
+  color: #bbf7d0;
+  background: var(--accent-glow);
+}
+
+.guide-kind-pill.transfer {
+  color: #cbd5e1;
+  background: #47556928;
+}
+
+.guide-note {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid #f5c14a44;
+  background: rgba(245, 193, 74, 0.08);
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.guide-situations {
+  margin: 1.75rem 0 1rem;
+}
+
+.guide-situations-lead {
+  margin: 0.35rem 0 1rem;
+  max-width: 62ch;
+}
+
+.guide-situation-title {
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.4rem;
+}
+
+.guide-situation-story {
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+}
+
+.guide-takeaway {
+  margin-top: 0.95rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.guide-lookup-table {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.guide-lookup-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.guide-lookup-row.head {
+  border-top: none;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.guide-lookup-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.guide-footer-links {
+  color: var(--muted);
+  margin-top: 1.25rem;
+  max-width: 62ch;
+}
+
+.guide-footer-links a {
+  color: var(--accent);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 @media (max-width: 900px) {
   .app-nav-links {
     display: none;
@@ -1391,7 +1650,7 @@ button {
 
   .app-tabbar {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     position: fixed;
     bottom: 0;
     left: 0;
@@ -1434,6 +1693,14 @@ button {
   .page {
     padding-bottom: 1.5rem;
   }
+
+  .guide-kinds {
+    grid-template-columns: 1fr;
+  }
+
+  .tabbar-link {
+    font-size: 0.62rem;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1458,5 +1725,23 @@ button {
 
   .spending-hero-top {
     flex-direction: column;
+  }
+
+  .guide-kinds {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-tx {
+    grid-template-columns: 1fr auto;
+  }
+
+  .guide-tx .guide-kind-pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .guide-lookup-row {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 }

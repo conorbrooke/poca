@@ -10,6 +10,7 @@ const links = [
   { href: "/income", label: "Income", icon: IncomeIcon },
   { href: "/spending/tags", label: "Tags", icon: TagsIcon },
   { href: "/sync", label: "Banks", icon: BanksIcon },
+  { href: "/guide", label: "Guide", icon: GuideIcon },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -73,6 +74,17 @@ function BanksIcon() {
       <path d="M18 10v7" />
       <path d="M3 17h18" />
       <path d="M12 4 3.5 9h17L12 4Z" />
+    </svg>
+  );
+}
+
+function GuideIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="nav-icon">
+      <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v16H7.5A2.5 2.5 0 0 0 5 21.5Z" />
+      <path d="M5 5.5v16" />
+      <path d="M9 8h6.5" />
+      <path d="M9 12h6.5" />
     </svg>
   );
 }
