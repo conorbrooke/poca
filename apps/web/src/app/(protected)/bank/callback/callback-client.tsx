@@ -3,10 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { isRevolutInstitution } from "@poca/shared";
 import { apiFetch } from "../../../../lib/api";
 
 type CallbackResult = {
   connectionId: string;
+  institutionId: string;
+  institutionName: string;
   accountCount: number;
   status: string;
 };
@@ -51,6 +54,14 @@ export function BankCallbackClient() {
         );
 
         setTimeout(() => {
+          if (
+            isRevolutInstitution(result.institutionId, result.institutionName)
+          ) {
+            router.push(
+              `/sync?connected=${encodeURIComponent(result.connectionId)}`,
+            );
+            return;
+          }
           router.push(`/dashboard?bank=${result.connectionId}`);
         }, 1500);
       } catch (err) {

@@ -1639,6 +1639,20 @@ button {
   text-underline-offset: 3px;
 }
 
+.revolut-history-banner {
+  margin-bottom: 1.25rem;
+}
+
+.revolut-history-banner p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.revolut-history-note {
+  margin-top: 0.45rem;
+  max-width: 62ch;
+}
+
 @media (max-width: 900px) {
   .app-nav-links {
     display: none;

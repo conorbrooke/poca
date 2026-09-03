@@ -95,5 +95,6 @@ export const IRISH_BANK_NAMES = [
 ] as const;
 
 export * from "./accounts.js";
+export * from "./banks.js";
 export * from "./spending.js";
 export * from "./transfers.js";

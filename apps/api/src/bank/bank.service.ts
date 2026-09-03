@@ -187,6 +187,8 @@ export class BankService {
 
     return {
       connectionId: connection.id,
+      institutionId: connection.institutionId,
+      institutionName: connection.institutionName,
       sessionId: session.id,
       accountCount: session.accountIds.length,
       status: BankConnectionStatus.LINKED,

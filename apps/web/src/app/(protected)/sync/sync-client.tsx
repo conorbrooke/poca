@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { formatMoneyList, formatRelativeSync } from "../../../lib/format";
 import type {
@@ -11,9 +12,12 @@ import type {
   SyncResponse,
 } from "../../../lib/types";
 import {
+  REVOLUT_HISTORY_WARNING,
   SYNC_DEFAULT_DAYS,
+  SYNC_MAX_DAYS,
   SYNC_RANGE_OPTIONS,
   accountTypeLabel,
+  isRevolutInstitution,
   sumBalancesByCurrency,
 } from "@poca/shared";
 
@@ -43,6 +47,8 @@ function BankLogo({ institution }: { institution: Institution }) {
 }
 
 export function SyncClient() {
+  const searchParams = useSearchParams();
+  const connectedId = searchParams.get("connected");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [connections, setConnections] = useState<BankConnection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,13 +179,15 @@ export function SyncClient() {
     }
   }
 
-  async function syncBank(connection: BankConnection) {
+  async function syncBank(connection: BankConnection, overrideDaysBack?: number) {
     setSyncingId(connection.id);
     setError(null);
     setMessage(null);
 
     const daysBack =
-      syncDaysByConnection[connection.id] ?? SYNC_DEFAULT_DAYS;
+      overrideDaysBack ??
+      syncDaysByConnection[connection.id] ??
+      SYNC_DEFAULT_DAYS;
 
     try {
       const result = await apiFetch<SyncResponse>("/bank/sync", {
@@ -203,6 +211,18 @@ export function SyncClient() {
     }
   }
 
+  const justConnectedRevolut = useMemo(() => {
+    if (!connectedId) return null;
+    const connection = connections.find((item) => item.id === connectedId);
+    if (!connection) return null;
+    return isRevolutInstitution(
+      connection.institutionId,
+      connection.institutionName,
+    )
+      ? connection
+      : null;
+  }, [connectedId, connections]);
+
   if (loading) {
     return (
       <div className="empty-state">
@@ -216,6 +236,34 @@ export function SyncClient() {
     <div>
       {error ? <div className="alert alert-error">{error}</div> : null}
       {message ? <div className="alert alert-success">{message}</div> : null}
+
+      {justConnectedRevolut ? (
+        <div className="alert alert-warning revolut-history-banner">
+          <p>
+            <strong>Revolut connected.</strong> {REVOLUT_HISTORY_WARNING}
+          </p>
+          <div className="tag-chip-row" style={{ marginTop: "0.75rem" }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={syncingId === justConnectedRevolut.id}
+              onClick={() => void syncBank(justConnectedRevolut, SYNC_MAX_DAYS)}
+            >
+              {syncingId === justConnectedRevolut.id ? (
+                <>
+                  <span className="loading-spinner" />
+                  Syncing last year…
+                </>
+              ) : (
+                "Sync last year now"
+              )}
+            </button>
+            <Link href="/dashboard" className="btn btn-secondary">
+              Skip for now
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       {linkedInstitutions.length > 0 ? (
         <section style={{ marginBottom: "2.5rem" }}>
@@ -232,6 +280,10 @@ export function SyncClient() {
               const txCount = connection.accounts.reduce(
                 (sum, account) => sum + account.transactionCount,
                 0,
+              );
+              const isRevolut = isRevolutInstitution(
+                connection.institutionId,
+                connection.institutionName,
               );
 
               return (
@@ -279,6 +331,12 @@ export function SyncClient() {
                       with {connection.institutionName}, or remove this connection
                       and try again.
                     </div>
+                  ) : null}
+
+                  {isRevolut && !isPending ? (
+                    <p className="bank-meta revolut-history-note">
+                      {REVOLUT_HISTORY_WARNING}
+                    </p>
                   ) : null}
 
                   <div className="bank-card-actions">
@@ -347,6 +405,16 @@ export function SyncClient() {
                         "Sync now"
                       )}
                     </button>
+                    {isRevolut ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={syncingId === connection.id}
+                        onClick={() => void syncBank(connection, SYNC_MAX_DAYS)}
+                      >
+                        Sync last year
+                      </button>
+                    ) : null}
                     <Link
                       href={`/dashboard?bank=${connection.id}`}
                       className="btn btn-secondary"
@@ -389,7 +457,13 @@ export function SyncClient() {
           </div>
         ) : (
           <div className="bank-grid">
-            {availableInstitutions.map((institution) => (
+            {availableInstitutions.map((institution) => {
+              const isRevolut = isRevolutInstitution(
+                institution.id,
+                institution.name,
+              );
+
+              return (
               <button
                 key={institution.id}
                 type="button"
@@ -407,10 +481,17 @@ export function SyncClient() {
                         ? "Redirecting to your bank…"
                         : "Click to connect"}
                     </p>
+                    {isRevolut ? (
+                      <p className="bank-meta revolut-history-note">
+                        After you approve, you&apos;ll have about 5 minutes to
+                        sync a full year of history.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </button>
-            ))}
+            );
+            })}
           </div>
         )}
       </section>
