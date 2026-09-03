@@ -10,6 +10,12 @@ export function isRevolutInstitution(
   return id.includes("revolut") || name === "revolut" || name.includes("revolut");
 }
 
+export function normalizeIban(iban?: string | null): string | null {
+  if (!iban) return null;
+  const cleaned = iban.replace(/\s+/g, "").toUpperCase();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 export const REVOLUT_HISTORY_WARNING =
   "Revolut only shares more than 90 days of history for about 5 minutes after you approve the link. " +
   "Choose “Last year” and sync now if you want older transactions — later syncs are capped at 90 days unless you reconnect.";

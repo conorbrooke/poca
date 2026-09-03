@@ -19,7 +19,7 @@ import type {
   SyncTransactionsInput,
   TransactionsQuery,
 } from "@poca/shared";
-import { sumBalancesByCurrency } from "@poca/shared";
+import { sumBalancesByCurrency, normalizeIban } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
 import { CategoriesService } from "../spending/categories.service";
@@ -292,6 +292,19 @@ export class BankService {
       });
     }
 
+    if (!bankConnectionId) {
+      const keptAccounts = await this.prisma.account.findMany({
+        where: { userId: user.id, bankConnectionId: null, isActive: true },
+        include: { _count: { select: { transactions: true } } },
+      });
+      overallAccounts.push(
+        ...keptAccounts.map((account) => ({
+          currentBalance: toNumber(account.currentBalance),
+          currency: account.currency,
+        })),
+      );
+    }
+
     return {
       connections: allConnections,
       banks: dashboardBanks,
@@ -376,7 +389,10 @@ export class BankService {
         accountName: tx.account.name,
         accountIban: tx.account.iban,
         bankConnectionId: tx.account.bankConnection?.id ?? "",
-        institutionName: tx.account.bankConnection?.institutionName ?? "",
+        institutionName:
+          tx.account.bankConnection?.institutionName ??
+          tx.account.institutionName ??
+          "",
         isSplit: tx.isSplit,
         category: tx.category
           ? {
@@ -416,7 +432,7 @@ export class BankService {
     };
   }
 
-  async deleteConnection(connectionId: string) {
+  async deleteConnection(connectionId: string, wipe = false) {
     const user = await this.ensureDemoUser();
     const connection = await this.prisma.bankConnection.findFirst({
       where: { id: connectionId, userId: user.id },
@@ -425,13 +441,28 @@ export class BankService {
       throw new NotFoundException("Bank connection not found");
     }
 
+    if (wipe) {
+      await this.prisma.$transaction(async (db) => {
+        await db.account.deleteMany({ where: { bankConnectionId: connectionId } });
+        await db.connectionStats.deleteMany({ where: { bankConnectionId: connectionId } });
+        await db.bankConnection.delete({ where: { id: connectionId } });
+      });
+      return { deleted: true, wiped: true };
+    }
+
     await this.prisma.$transaction(async (db) => {
-      await db.account.deleteMany({ where: { bankConnectionId: connectionId } });
+      await db.account.updateMany({
+        where: { bankConnectionId: connectionId },
+        data: {
+          bankConnectionId: null,
+          institutionName: connection.institutionName,
+        },
+      });
       await db.connectionStats.deleteMany({ where: { bankConnectionId: connectionId } });
       await db.bankConnection.delete({ where: { id: connectionId } });
     });
 
-    return { deleted: true };
+    return { deleted: true, wiped: false };
   }
 
   async resumeConnection(connectionId: string, redirectUrl: string) {
@@ -553,33 +584,13 @@ export class BankService {
           stored.currency,
         ).amount;
 
-        const account = await this.prisma.account.upsert({
-          where: {
-            userId_externalId: {
-              userId: user.id,
-              externalId: externalAccountId,
-            },
-          },
-          create: {
-            userId: user.id,
-            bankConnectionId,
-            externalId: externalAccountId,
-            name: stored.name,
-            iban: stored.iban,
-            currency: stored.currency,
-            accountType: stored.accountType,
-            product: stored.product,
-            provider: BankProvider.ENABLE_BANKING,
-            currentBalance,
-          },
-          update: {
-            name: stored.name,
-            iban: stored.iban,
-            currency: stored.currency,
-            accountType: stored.accountType,
-            product: stored.product,
-            currentBalance,
-          },
+        const account = await this.resolveSyncedAccount({
+          userId: user.id,
+          bankConnectionId,
+          institutionName: connection.institutionName,
+          externalAccountId,
+          stored,
+          currentBalance,
         });
 
         const transactions = await this.provider.getTransactions(
@@ -648,6 +659,77 @@ export class BankService {
 
       throw error;
     }
+  }
+
+  private async resolveSyncedAccount(input: {
+    userId: string;
+    bankConnectionId: string;
+    institutionName: string;
+    externalAccountId: string;
+    stored: {
+      name: string;
+      iban?: string;
+      currency: string;
+      accountType: string | null;
+      product: string | null;
+    };
+    currentBalance: number;
+  }) {
+    const data = {
+      bankConnectionId: input.bankConnectionId,
+      externalId: input.externalAccountId,
+      name: input.stored.name,
+      iban: input.stored.iban,
+      currency: input.stored.currency,
+      accountType: input.stored.accountType,
+      product: input.stored.product,
+      institutionName: input.institutionName,
+      provider: BankProvider.ENABLE_BANKING,
+      currentBalance: input.currentBalance,
+      isActive: true,
+    };
+
+    const byExternal = await this.prisma.account.findUnique({
+      where: {
+        userId_externalId: {
+          userId: input.userId,
+          externalId: input.externalAccountId,
+        },
+      },
+    });
+    if (byExternal) {
+      return this.prisma.account.update({
+        where: { id: byExternal.id },
+        data,
+      });
+    }
+
+    const incomingIban = normalizeIban(input.stored.iban);
+    if (incomingIban) {
+      const candidates = await this.prisma.account.findMany({
+        where: {
+          userId: input.userId,
+          currency: input.stored.currency,
+          NOT: { iban: null },
+        },
+      });
+      const match = candidates.find(
+        (account) => normalizeIban(account.iban) === incomingIban,
+      );
+      if (match) {
+        return this.prisma.account.update({
+          where: { id: match.id },
+          data,
+        });
+      }
+    }
+
+    return this.prisma.account.create({
+      data: {
+        userId: input.userId,
+        ...data,
+      },
+    });
   }
 
   private buildCursorFilter(

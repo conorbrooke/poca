@@ -1653,6 +1653,10 @@ button {
   max-width: 62ch;
 }
 
+.wealth-subnav {
+  margin-bottom: 1.25rem;
+}
+
 @media (max-width: 900px) {
   .app-nav-links {
     display: none;
@@ -1664,7 +1668,7 @@ button {
 
   .app-tabbar {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(7, 1fr);
     position: fixed;
     bottom: 0;
     left: 0;

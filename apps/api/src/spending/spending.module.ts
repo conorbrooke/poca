@@ -1,4 +1,4 @@
-import { Module, forwardRef } from "@nestjs/common";
+import { Module } from "@nestjs/common";
 import { CategoriesService } from "./categories.service";
 import { ReceiptsService } from "./receipts.service";
 import { SpendingController } from "./spending.controller";

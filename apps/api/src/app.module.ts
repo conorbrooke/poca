@@ -5,6 +5,7 @@ import { FxModule } from "./fx/fx.module";
 import { HealthModule } from "./health/health.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SpendingModule } from "./spending/spending.module";
+import { WealthModule } from "./wealth/wealth.module";
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SpendingModule } from "./spending/spending.module";
     HealthModule,
     BankModule,
     SpendingModule,
+    WealthModule,
   ],
 })
 export class AppModule {}

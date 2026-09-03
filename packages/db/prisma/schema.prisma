@@ -55,6 +55,12 @@ model User {
   tags             Tag[]
   syncJobs         SyncJob[]
   accountTransfers AccountTransfer[]
+  monthlyBudgets   MonthlyBudget[]
+  recurringBills   RecurringBill[]
+  savingsGoals     SavingsGoal[]
+  wealthItems      WealthItem[]
+  holdings         Holding[]
+  netWorthSnapshots NetWorthSnapshot[]
 
   @@index([email])
 }
@@ -111,6 +117,7 @@ model Account {
   currency         String       @default("EUR")
   accountType      String?
   product          String?
+  institutionName  String?
   provider         BankProvider @default(MANUAL)
   currentBalance   Decimal      @default(0) @db.Decimal(14, 2)
   isActive         Boolean      @default(true)
@@ -120,6 +127,8 @@ model Account {
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   bankConnection BankConnection? @relation(fields: [bankConnectionId], references: [id], onDelete: SetNull)
   transactions   Transaction[]
+  savingsGoals   SavingsGoal[]
+  wealthItems    WealthItem[]
 
   @@unique([userId, externalId])
   @@index([userId])
@@ -143,6 +152,8 @@ model Category {
   splits       TransactionSplit[]
   rules        CategoryRule[]
   periodStats  CategoryPeriodStat[]
+  budgetLines  BudgetLine[]
+  recurringBills RecurringBill[]
 
   @@unique([userId, name])
   @@index([userId])
@@ -354,4 +365,169 @@ model SyncJob {
 
   @@index([userId])
   @@index([status])
+}
+
+enum BillCadence {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum SavingsGoalKind {
+  EMERGENCY
+  HOUSE
+  CAR
+  HOLIDAY
+  GENERAL
+}
+
+enum WealthSide {
+  ASSET
+  LIABILITY
+}
+
+enum WealthClass {
+  BANK_CASH
+  PROPERTY
+  VEHICLE
+  PENSION
+  INVESTMENT
+  OTHER
+  MORTGAGE
+  LOAN
+  CREDIT_CARD
+  PERSONAL
+}
+
+enum PensionKind {
+  OCCUPATIONAL
+  PRSA
+  AVC
+}
+
+model MonthlyBudget {
+  id         String   @id @default(cuid())
+  userId     String
+  year       Int
+  month      Int
+  overallCap Decimal? @db.Decimal(14, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lines BudgetLine[]
+
+  @@unique([userId, year, month])
+  @@index([userId])
+}
+
+model BudgetLine {
+  id         String  @id @default(cuid())
+  budgetId   String
+  categoryId String
+  amount     Decimal @db.Decimal(14, 2)
+
+  budget   MonthlyBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  category Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([budgetId, categoryId])
+  @@index([categoryId])
+}
+
+model RecurringBill {
+  id             String      @id @default(cuid())
+  userId         String
+  name           String
+  categoryId     String?
+  payeeMatch     String?
+  typicalAmount  Decimal     @db.Decimal(14, 2)
+  cadence        BillCadence @default(MONTHLY)
+  nextDue        DateTime?   @db.Date
+  isEssential    Boolean     @default(false)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([categoryId])
+}
+
+model SavingsGoal {
+  id            String          @id @default(cuid())
+  userId        String
+  name          String
+  kind          SavingsGoalKind @default(GENERAL)
+  targetAmount  Decimal         @db.Decimal(14, 2)
+  targetDate    DateTime?       @db.Date
+  currentAmount Decimal         @default(0) @db.Decimal(14, 2)
+  accountId     String?
+  notes         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([accountId])
+}
+
+model WealthItem {
+  id                   String       @id @default(cuid())
+  userId               String
+  name                 String
+  side                 WealthSide
+  class                WealthClass
+  currentValue         Decimal      @db.Decimal(14, 2)
+  accountId            String?
+  interestRate         Decimal?     @db.Decimal(7, 4)
+  minimumPayment       Decimal?     @db.Decimal(14, 2)
+  pensionKind          PensionKind?
+  employerMatchAnnual  Decimal?     @db.Decimal(14, 2)
+  notes                String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([accountId])
+}
+
+model Holding {
+  id          String   @id @default(cuid())
+  userId      String
+  ticker      String
+  name        String
+  quantity    Decimal  @db.Decimal(18, 6)
+  averageCost Decimal  @db.Decimal(14, 4)
+  currency    String   @default("EUR")
+  broker      String?
+  lastPrice   Decimal? @db.Decimal(14, 4)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model NetWorthSnapshot {
+  id                String   @id @default(cuid())
+  userId            String
+  asOf              DateTime @db.Date
+  totalAssets       Decimal  @db.Decimal(14, 2)
+  totalLiabilities  Decimal  @db.Decimal(14, 2)
+  netWorth          Decimal  @db.Decimal(14, 2)
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, asOf])
+  @@index([userId])
 }

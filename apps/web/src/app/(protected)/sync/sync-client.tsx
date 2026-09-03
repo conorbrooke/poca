@@ -132,23 +132,33 @@ export function SyncClient() {
     }
   }
 
-  async function removeConnection(connection: BankConnection) {
+  async function removeConnection(connection: BankConnection, wipe = false) {
     const label =
       connection.status === "PENDING"
         ? `Remove the unfinished ${connection.institutionName} connection?`
-        : `Disconnect ${connection.institutionName}? Synced accounts and transactions for this bank will be removed from Póca.`;
+        : wipe
+          ? `Permanently delete ${connection.institutionName} from Póca? This removes its accounts and every transaction for that bank.`
+          : `Disconnect ${connection.institutionName}? Transactions stay in Póca. Reconnect later to resume sync.`;
 
     if (!window.confirm(label)) return;
+    if (wipe && !window.confirm("Type-level confirm: this cannot be undone. Delete history?")) {
+      return;
+    }
 
     setRemovingId(connection.id);
     setError(null);
     setMessage(null);
 
     try {
-      await apiFetch(`/bank/connections/${connection.id}`, {
+      const query = wipe ? "?wipe=true" : "";
+      await apiFetch(`/bank/connections/${connection.id}${query}`, {
         method: "DELETE",
       });
-      setMessage(`${connection.institutionName} removed.`);
+      setMessage(
+        wipe
+          ? `${connection.institutionName} and its history were deleted.`
+          : `${connection.institutionName} disconnected. Transactions were kept.`,
+      );
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove bank");
@@ -427,7 +437,15 @@ export function SyncClient() {
                       disabled={isBusy}
                       onClick={() => void removeConnection(connection)}
                     >
-                      {removingId === connection.id ? "Removing…" : "Disconnect"}
+                      {removingId === connection.id ? "Disconnecting…" : "Disconnect"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={isBusy}
+                      onClick={() => void removeConnection(connection, true)}
+                    >
+                      Delete history
                     </button>
                       </>
                     )}

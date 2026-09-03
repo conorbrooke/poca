@@ -79,6 +79,15 @@ export const connectionIdParamSchema = z.object({
 
 export type ConnectionIdParam = z.infer<typeof connectionIdParamSchema>;
 
+export const deleteConnectionQuerySchema = z.object({
+  wipe: z
+    .union([z.literal("true"), z.literal("false"), z.boolean()])
+    .optional()
+    .transform((value) => value === true || value === "true"),
+});
+
+export type DeleteConnectionQuery = z.infer<typeof deleteConnectionQuerySchema>;
+
 export const dashboardQuerySchema = z.object({
   bankConnectionId: z.string().min(1).optional(),
 });
@@ -98,3 +107,5 @@ export * from "./accounts.js";
 export * from "./banks.js";
 export * from "./spending.js";
 export * from "./transfers.js";
+export * from "./wealth.js";
+export * from "./wealth-math.js";

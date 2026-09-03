@@ -12,6 +12,7 @@ import {
   connectionIdParamSchema,
   createBankLinkSchema,
   dashboardQuerySchema,
+  deleteConnectionQuerySchema,
   listInstitutionsQuerySchema,
   resumeBankLinkSchema,
   syncTransactionsSchema,
@@ -70,13 +71,18 @@ export class BankController {
   }
 
   @Delete("connections/:id")
-  deleteConnection(@Param() params: unknown) {
+  deleteConnection(@Param() params: unknown, @Query() query: unknown) {
     const { id } = parseOrThrow(
       connectionIdParamSchema,
       params,
       "Connection id param",
     );
-    return this.bankService.deleteConnection(id);
+    const { wipe } = parseOrThrow(
+      deleteConnectionQuerySchema,
+      query,
+      "Delete connection query",
+    );
+    return this.bankService.deleteConnection(id, wipe);
   }
 
   @Post("connections/:id/resume")

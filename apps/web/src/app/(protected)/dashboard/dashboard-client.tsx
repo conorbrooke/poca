@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { StatsGrid } from "../../../components/stats-grid";
+import { WealthDashboardStrip } from "../../../components/wealth-dashboard-strip";
 import { TransactionList } from "../../../components/transaction-list";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney, formatRelativeSync } from "../../../lib/format";
@@ -188,6 +189,8 @@ export function DashboardClient() {
           </Link>
         ))}
       </div>
+
+      <WealthDashboardStrip />
 
       {linkedConnections.length === 0 ? (
         <div className="empty-state card">
