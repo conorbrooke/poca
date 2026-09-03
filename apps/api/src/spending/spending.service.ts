@@ -107,6 +107,7 @@ export class SpendingService {
     const summary = await this.getSummary(userId, query);
     const categorySummary =
       summary.categories.find((item) => item.id === categoryId) ??
+      summary.transferCategories.find((item) => item.id === categoryId) ??
       (summary.transfersCategory?.id === categoryId
         ? summary.transfersCategory
         : undefined) ??
@@ -701,32 +702,25 @@ export class SpendingService {
       0,
     );
 
+    const transferCategories = transferRows
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .map((row) => ({
+        id: row.category.id,
+        name: row.category.name,
+        color: row.category.color,
+        icon: row.category.icon,
+        isSystem: row.category.isSystem,
+        kind: row.category.kind,
+        totalSpent: row.totalSpent,
+        transactionCount: row.transactionCount,
+        share:
+          totalTransferred > 0
+            ? roundMoney((row.totalSpent / totalTransferred) * 100)
+            : 0,
+      }));
+
     const transfersCategory =
-      transferRows.length === 1
-        ? {
-            id: transferRows[0]!.category.id,
-            name: transferRows[0]!.category.name,
-            color: transferRows[0]!.category.color,
-            icon: transferRows[0]!.category.icon,
-            isSystem: transferRows[0]!.category.isSystem,
-            kind: transferRows[0]!.category.kind,
-            totalSpent: transferRows[0]!.totalSpent,
-            transactionCount: transferRows[0]!.transactionCount,
-            share: 0,
-          }
-        : transferRows.length > 1
-          ? {
-              id: transferRows[0]!.category.id,
-              name: "Transfers",
-              color: transferRows[0]!.category.color,
-              icon: transferRows[0]!.category.icon,
-              isSystem: transferRows[0]!.category.isSystem,
-              kind: "TRANSFER" as const,
-              totalSpent: totalTransferred,
-              transactionCount: transferTransactionCount,
-              share: 0,
-            }
-          : null;
+      transferCategories.length === 1 ? transferCategories[0]! : null;
 
     const reviewTotal = reviewRows.reduce((sum, row) => sum + row.totalSpent, 0);
 
@@ -741,6 +735,7 @@ export class SpendingService {
       transactionCount,
       cached,
       transfersCategory,
+      transferCategories,
       reviewCategories: reviewRows
         .sort((a, b) => b.totalSpent - a.totalSpent)
         .map((row) => ({

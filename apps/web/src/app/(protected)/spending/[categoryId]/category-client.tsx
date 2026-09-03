@@ -6,12 +6,15 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { SPENDING_RANGES, categoryKindLabel, type CategoryKind } from "@poca/shared";
 import { CategoryKindFields } from "../../../../components/category-kind-fields";
 import { SelectableTransactionList } from "../../../../components/selectable-transaction-list";
+import { TransferCategoryNav } from "../../../../components/transfers-section";
 import { apiFetch } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
 import { useSpendingRange } from "../../../../lib/spending-range";
 import type {
   CategoryDetailResponse,
   CategoryOption,
+  SpendingCategorySummary,
+  SpendingSummaryResponse,
   SpendingTransaction,
 } from "../../../../lib/types";
 
@@ -36,6 +39,9 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
   const categoryBase = isIncomeSection ? "/income" : "/spending";
 
   const [detail, setDetail] = useState<CategoryDetailResponse | null>(null);
+  const [transferCategories, setTransferCategories] = useState<
+    SpendingCategorySummary[]
+  >([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [transactions, setTransactions] = useState<SpendingTransaction[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -78,13 +84,20 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
     setError(null);
     try {
       const params = metaParams();
-      const [detailRes, categoryList] = await Promise.all([
+      const [detailRes, categoryList, summaryRes] = await Promise.all([
         apiFetch<CategoryDetailResponse>(
           `/spending/categories/${categoryId}?${params.toString()}`,
         ),
         apiFetch<CategoryOption[]>("/spending/categories"),
+        apiFetch<SpendingSummaryResponse>(
+          `/spending/summary?${params.toString()}`,
+        ),
       ]);
       setDetail(detailRes);
+      setTransferCategories(
+        summaryRes.transferCategories ??
+          (summaryRes.transfersCategory ? [summaryRes.transfersCategory] : []),
+      );
       setNameValue(detailRes.category.name);
       setIconValue(detailRes.category.icon ?? "");
       setColorValue(detailRes.category.color);
@@ -231,6 +244,18 @@ export function CategoryClient({ categoryId }: CategoryClientProps) {
       <Link href={backHref} className="back-link">
         {isIncomeSection ? "← Back to income" : "← Back to spending"}
       </Link>
+
+      {isTransferCategory ? (
+        <TransferCategoryNav
+          transferCategories={transferCategories}
+          activeCategoryId={categoryId}
+          range={range}
+          bankConnectionId={bankConnectionId}
+          tagIds={tagIds?.split(",").filter(Boolean)}
+          flow={flow}
+          basePath={categoryBase}
+        />
+      ) : null}
 
       <div
         className="spending-hero card"

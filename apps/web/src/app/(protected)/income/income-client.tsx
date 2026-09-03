@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { SPENDING_RANGES } from "@poca/shared";
 import { AddCategoryForm } from "../../../components/add-category-form";
 import { SelectableTransactionList } from "../../../components/selectable-transaction-list";
+import { TransfersSection } from "../../../components/transfers-section";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
 import { useSpendingRange } from "../../../lib/spending-range";
@@ -184,26 +185,18 @@ export function IncomeClient() {
         </div>
       </div>
 
-      {data?.transfersCategory && data.totalTransferred > 0 ? (
-        <Link
-          href={categoryHref(data.transfersCategory.id)}
-          className="spending-movements-card card"
-        >
-          <div className="spending-movements-copy">
-            <p className="page-eyebrow">Money in, not earned</p>
-            <h3 className="spending-movements-total">
-              {formatMoney(data.totalTransferred)}
-            </h3>
-            <p className="bank-meta">
-              {data.transferTransactionCount} transfer
-              {data.transferTransactionCount === 1 ? "" : "s"} · deposits,
-              reimbursements, account top-ups
-            </p>
-          </div>
-          <span className="spending-movements-icon">
-            {data.transfersCategory.icon ?? "↔️"}
-          </span>
-        </Link>
+      {data && data.totalTransferred > 0 ? (
+        <TransfersSection
+          transferCategories={
+            data.transferCategories ??
+            (data.transfersCategory ? [data.transfersCategory] : [])
+          }
+          totalTransferred={data.totalTransferred}
+          transferTransactionCount={data.transferTransactionCount}
+          range={range}
+          bankConnectionId={bankConnectionId}
+          flow="in"
+        />
       ) : null}
 
       {reviewCategories.length > 0 ? (

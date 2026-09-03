@@ -235,7 +235,9 @@ export type SpendingSummaryResponse = {
   transferTransactionCount: number;
   transactionCount: number;
   categories: SpendingCategorySummary[];
+  /** @deprecated Use transferCategories — kept when exactly one transfer category has activity */
   transfersCategory: SpendingCategorySummary | null;
+  transferCategories: SpendingCategorySummary[];
   reviewCategories: SpendingCategorySummary[];
   cached: boolean;
 };

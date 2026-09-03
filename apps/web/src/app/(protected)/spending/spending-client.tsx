@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SPENDING_RANGES } from "@poca/shared";
 import { AddCategoryForm } from "../../../components/add-category-form";
+import { TransfersSection } from "../../../components/transfers-section";
 import { apiFetch } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
 import { useSpendingRange } from "../../../lib/spending-range";
@@ -157,14 +158,18 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
         </div>
       ) : null}
 
-      {data?.transfersCategory && data.totalTransferred > 0 ? (
-        <MovementsCard
-          category={data.transfersCategory}
+      {data && data.totalTransferred > 0 ? (
+        <TransfersSection
+          transferCategories={
+            data.transferCategories ??
+            (data.transfersCategory ? [data.transfersCategory] : [])
+          }
           totalTransferred={data.totalTransferred}
           transferTransactionCount={data.transferTransactionCount}
           range={range}
           bankConnectionId={bankConnectionId}
           tagIds={selectedTagIds}
+          flow="out"
         />
       ) : null}
 
@@ -204,43 +209,6 @@ export function SpendingClient({ initialRange }: SpendingClientProps) {
         }}
       />
     </div>
-  );
-}
-
-function MovementsCard({
-  category,
-  totalTransferred,
-  transferTransactionCount,
-  range,
-  bankConnectionId,
-  tagIds,
-}: {
-  category: SpendingCategorySummary;
-  totalTransferred: number;
-  transferTransactionCount: number;
-  range: string;
-  bankConnectionId?: string;
-  tagIds: string[];
-}) {
-  const params = new URLSearchParams({ range });
-  if (bankConnectionId) params.set("bank", bankConnectionId);
-  if (tagIds.length > 0) params.set("tagIds", tagIds.join(","));
-
-  return (
-    <Link
-      href={`/spending/${category.id}?${params.toString()}`}
-      className="spending-movements-card card"
-    >
-      <div className="spending-movements-copy">
-        <p className="page-eyebrow">Between your accounts</p>
-        <h3 className="spending-movements-total">{formatMoney(totalTransferred)}</h3>
-        <p className="bank-meta">
-          {transferTransactionCount} movement
-          {transferTransactionCount === 1 ? "" : "s"} · excluded from spending
-        </p>
-      </div>
-      <span className="spending-movements-icon">{category.icon ?? "↔️"}</span>
-    </Link>
   );
 }
 

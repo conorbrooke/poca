@@ -840,6 +840,22 @@ button {
   line-height: 1;
 }
 
+.transfers-section {
+  margin-bottom: 1rem;
+}
+
+.transfers-summary-card {
+  margin-bottom: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #47556955;
+  background: linear-gradient(135deg, #47556914, transparent);
+}
+
+.transfer-category-nav {
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
 .transfer-kind-label {
   opacity: 0.75;
   font-weight: 500;
