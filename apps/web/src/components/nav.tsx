@@ -88,7 +88,7 @@ export function Nav() {
             <BrandLogo size={36} />
             <span className="app-brand-copy">
               <span className="app-brand-name">Póca</span>
-              <span className="app-brand-tag">Your pocket, clearly</span>
+              <span className="app-brand-tag">Know where it goes</span>
             </span>
           </Link>
           <nav className="app-nav-links" aria-label="Main">
