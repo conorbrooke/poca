@@ -8,6 +8,7 @@ import { CategorySelect } from "./category-select";
 import { apiFetch, apiUpload, apiUrl } from "../lib/api";
 import { formatMoney } from "../lib/format";
 import { TransactionAmount } from "./transaction-amount";
+import { TransactionWealthPanel } from "./transaction-wealth-panel";
 import type {
   CategoryOption,
   ReceiptSummary,
@@ -699,6 +700,16 @@ export function RecategorizePanel({
           >
             Unsplit into one transaction
           </button>
+        ) : null}
+
+        {!isSplitChild ? (
+          <TransactionWealthPanel
+            transactionId={transaction.transactionId}
+            amount={transaction.amount}
+            payeeLabel={transaction.payeeLabel}
+            description={transaction.description}
+            bookedAt={transaction.bookedAt}
+          />
         ) : null}
 
         <h3 className="section-title">Receipts</h3>

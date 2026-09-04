@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import {
   assignGoalTransactionSchema,
+  assignWealthFromTransactionSchema,
   assignWealthTransactionSchema,
   copyBudgetSchema,
   debtOrderSchema,
@@ -210,6 +211,33 @@ export class WealthController {
   @Get("items/:id/candidates")
   listItemCandidates(@Param("id") id: string) {
     return this.wealth.listWealthCandidates(id);
+  }
+
+  @Get("transactions/:transactionId")
+  getTransactionWealth(@Param("transactionId") transactionId: string) {
+    return this.wealth.getTransactionWealthContext(transactionId);
+  }
+
+  @Post("transactions/:transactionId/ledger")
+  assignTransactionWealth(
+    @Param("transactionId") transactionId: string,
+    @Body() body: unknown,
+  ) {
+    const input = parseOrThrow(
+      assignWealthFromTransactionSchema,
+      body,
+      "Assign wealth from transaction body",
+    );
+    return this.wealth.assignWealthTransaction(
+      input.itemId,
+      transactionId,
+      input.role,
+    );
+  }
+
+  @Delete("transactions/:transactionId/ledger")
+  unassignTransactionWealth(@Param("transactionId") transactionId: string) {
+    return this.wealth.unassignWealthTransactionByTransaction(transactionId);
   }
 
   @Post("items/:id/ledger")

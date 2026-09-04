@@ -190,6 +190,42 @@ export type AssignWealthTransactionInput = z.infer<
   typeof assignWealthTransactionSchema
 >;
 
+export const assignWealthFromTransactionSchema = z.object({
+  itemId: z.string().min(1),
+  role: z.enum(WEALTH_LEDGER_ROLES),
+});
+
+export type AssignWealthFromTransactionInput = z.infer<
+  typeof assignWealthFromTransactionSchema
+>;
+
+export type TransactionWealthAttachment = {
+  itemId: string;
+  itemName: string;
+  side: (typeof WEALTH_SIDES)[number];
+  class: (typeof WEALTH_CLASSES)[number];
+  role: (typeof WEALTH_LEDGER_ROLES)[number];
+};
+
+export type TransactionWealthItemOption = {
+  id: string;
+  name: string;
+  side: (typeof WEALTH_SIDES)[number];
+  class: (typeof WEALTH_CLASSES)[number];
+};
+
+export type TransactionWealthContext = {
+  transactionId: string;
+  amount: number;
+  bookedAt: string;
+  attachment: TransactionWealthAttachment | null;
+  items: TransactionWealthItemOption[];
+  defaults: {
+    assetRole: (typeof WEALTH_LEDGER_ROLES)[number];
+    liabilityRole: (typeof WEALTH_LEDGER_ROLES)[number];
+  };
+};
+
 export const upsertWealthValuationSchema = z.object({
   asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   value: z.number().nonnegative().optional(),

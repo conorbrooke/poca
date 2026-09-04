@@ -1298,17 +1298,99 @@ export class WealthService {
     return { deleted: true };
   }
 
+  private assertWealthLedgerRole(
+    side: "ASSET" | "LIABILITY",
+    role: "PURCHASE" | "OPENING" | "REPAYMENT" | "INCREASE",
+  ) {
+    if (
+      side === "ASSET" &&
+      (role === "REPAYMENT" || role === "INCREASE")
+    ) {
+      throw new BadRequestException(
+        "Assets use purchase or opening roles only",
+      );
+    }
+    if (
+      side === "LIABILITY" &&
+      (role === "PURCHASE" || role === "OPENING")
+    ) {
+      throw new BadRequestException(
+        "Liabilities use repayment or increase roles only",
+      );
+    }
+  }
+
+  async getTransactionWealthContext(transactionId: string) {
+    const userId = await this.demoUserId();
+    const tx = await this.prisma.transaction.findFirst({
+      where: { id: transactionId, account: { userId } },
+    });
+    if (!tx) throw new NotFoundException("Transaction not found");
+
+    const existing = await this.prisma.wealthItemLedger.findUnique({
+      where: { transactionId },
+      include: {
+        wealthItem: {
+          select: { id: true, name: true, side: true, class: true },
+        },
+      },
+    });
+
+    const items = await this.prisma.wealthItem.findMany({
+      where: { userId, class: { not: "PENSION" } },
+      orderBy: [{ side: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, side: true, class: true },
+    });
+
+    const amount = toNumber(tx.amount);
+    return {
+      transactionId,
+      amount,
+      bookedAt: tx.bookedAt.toISOString(),
+      attachment: existing
+        ? {
+            itemId: existing.wealthItem.id,
+            itemName: existing.wealthItem.name,
+            side: existing.wealthItem.side,
+            class: existing.wealthItem.class,
+            role: existing.role,
+          }
+        : null,
+      items,
+      defaults: {
+        assetRole: amount < 0 ? ("PURCHASE" as const) : ("OPENING" as const),
+        liabilityRole:
+          amount < 0 ? ("REPAYMENT" as const) : ("INCREASE" as const),
+      },
+    };
+  }
+
   async assignWealthTransaction(
     id: string,
     transactionId: string,
     role: "PURCHASE" | "OPENING" | "REPAYMENT" | "INCREASE",
   ) {
     const userId = await this.demoUserId();
-    await this.requireWealthItem(userId, id);
+    const item = await this.requireWealthItem(userId, id);
+    this.assertWealthLedgerRole(item.side, role);
     const tx = await this.prisma.transaction.findFirst({
       where: { id: transactionId, account: { userId } },
     });
     if (!tx) throw new NotFoundException("Transaction not found");
+    const existing = await this.prisma.wealthItemLedger.findUnique({
+      where: { transactionId },
+    });
+    if (existing && existing.wealthItemId !== id) {
+      throw new BadRequestException(
+        "Transaction is already linked to another net worth item",
+      );
+    }
+    if (existing) {
+      return this.prisma.wealthItemLedger.update({
+        where: { transactionId },
+        data: { wealthItemId: id, role },
+      });
+    }
     return this.prisma.wealthItemLedger.create({
       data: { wealthItemId: id, transactionId, role },
     });
@@ -1320,6 +1402,19 @@ export class WealthService {
     await this.prisma.wealthItemLedger.deleteMany({
       where: { wealthItemId: id, transactionId },
     });
+    return { deleted: true };
+  }
+
+  async unassignWealthTransactionByTransaction(transactionId: string) {
+    const userId = await this.demoUserId();
+    const existing = await this.prisma.wealthItemLedger.findUnique({
+      where: { transactionId },
+      include: { wealthItem: { select: { userId: true } } },
+    });
+    if (!existing || existing.wealthItem.userId !== userId) {
+      throw new NotFoundException("Transaction is not linked to net worth");
+    }
+    await this.prisma.wealthItemLedger.delete({ where: { transactionId } });
     return { deleted: true };
   }
 
