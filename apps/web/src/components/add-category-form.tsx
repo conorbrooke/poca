@@ -20,6 +20,7 @@ export function AddCategoryForm({
   const [kind, setKind] = useState<CategoryKind>(defaultKind);
   const [isBill, setIsBill] = useState(false);
   const [isEssential, setIsEssential] = useState(true);
+  const [isVariable, setIsVariable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +39,8 @@ export function AddCategoryForm({
           name: trimmed,
           kind,
           isBill: kind === "EXPENSE" ? isBill : false,
-          isEssential: kind === "EXPENSE" && isBill ? isEssential : false,
+          isEssential: kind === "EXPENSE" ? isEssential : false,
+          isVariable: kind === "EXPENSE" ? isVariable : false,
           ...(icon.trim() ? { icon: icon.trim() } : {}),
         }),
       });
@@ -88,8 +90,10 @@ export function AddCategoryForm({
         onChange={setKind}
         isBill={isBill}
         isEssential={isEssential}
+        isVariable={isVariable}
         onBillChange={setIsBill}
         onEssentialChange={setIsEssential}
+        onVariableChange={setIsVariable}
       />
       {error ? <p className="alert alert-error">{error}</p> : null}
       <button

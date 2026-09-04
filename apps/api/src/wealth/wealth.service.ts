@@ -4,6 +4,7 @@ import {
   type PensionKind,
   type WealthClass,
   type WealthSide,
+  WealthValuationSource,
 } from "@poca/db";
 import type {
   CopyBudgetInput,
@@ -16,16 +17,24 @@ import type {
 } from "@poca/shared";
 import {
   afterDirt,
+  amortisePoints,
+  amortiseRemaining,
   budgetMonthFromPeriod,
+  chartWindowFromFocus,
+  depreciatedValue,
   emergencyFundTarget,
   formatDateOnly,
   holdingGain,
   holdingMarketValue,
+  monthBounds,
+  monthSurplus,
   monthlyPensionInflow,
   previousPeriodWindow,
   remainingBudget,
   resolveSpendingPeriod,
+  roundCents,
   savingsRate,
+  shiftMonth,
   spendingPeriodHrefQuery,
   sortAvalanche,
   sortSnowball,
@@ -33,9 +42,14 @@ import {
 import { PrismaService } from "../prisma/prisma.module";
 import { CategoriesService } from "../spending/categories.service";
 import { FxService } from "../fx/fx.service";
+import { buildBillChecklist } from "./bill-checklist";
 
 function toNumber(value: { toString(): string }): number {
   return parseFloat(value.toString());
+}
+
+function prismaDateOnly(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
 }
 
 function eur(value: number): string {
@@ -46,19 +60,6 @@ function monthName(year: number, month: number): string {
   return new Date(year, month - 1, 1).toLocaleDateString("en-IE", {
     month: "long",
   });
-}
-
-function monthBounds(year: number, month: number) {
-  const periodStart = new Date(year, month - 1, 1);
-  periodStart.setHours(0, 0, 0, 0);
-  const periodEnd = new Date(year, month, 0);
-  periodEnd.setHours(23, 59, 59, 999);
-  return { periodStart, periodEnd };
-}
-
-function shiftMonth(year: number, month: number, delta: number) {
-  const date = new Date(year, month - 1 + delta, 1);
-  return { year: date.getFullYear(), month: date.getMonth() + 1 };
 }
 
 function currentMonth() {
@@ -111,13 +112,11 @@ export class WealthService {
       ? Math.round((netWorth.netWorth - toNumber(previousSnapshot.netWorth)) * 100) / 100
       : 0;
 
-    const essentialMonthly = bills
-      .filter((bill) => bill.isEssential)
-      .reduce((sum, bill) => sum + bill.monthlyAmount, 0);
+    const essentialMonthly = bills.essentialExpected;
     const emergencyTarget = emergencyFundTarget(essentialMonthly, 3);
     const emergencyGoal = goals.find((goal) => goal.kind === "EMERGENCY");
     const emergencySaved = emergencyGoal?.currentAmount ?? 0;
-    const billSpend = bills.reduce((sum, bill) => sum + bill.spentThisMonth, 0);
+    const billSpend = bills.paidSpend;
     const surplus = Math.round((cashflow.income - cashflow.spending) * 100) / 100;
     const pensionMonthlyIn = netWorth.items
       .filter((item) => item.class === "PENSION")
@@ -132,6 +131,7 @@ export class WealthService {
       income: cashflow.income,
       spending: cashflow.spending,
       surplus,
+      leftover: budget.leftover,
       savingsRate: savingsRate(cashflow.income, cashflow.spending),
       interestGross: cashflow.interestGross,
       interestAfterDirt: afterDirt(cashflow.interestGross),
@@ -210,11 +210,13 @@ export class WealthService {
         transactionCount: spent?.count ?? 0,
         isBill: category.isBill,
         isEssential: category.isEssential,
+        isVariable: category.isVariable,
       };
     });
 
     const totalBudgeted = lines.reduce((sum, line) => sum + line.amount, 0);
     const totalSpent = lines.reduce((sum, line) => sum + line.spent, 0);
+    const leftover = await this.buildLeftover(userId, year, month);
 
     return {
       id: thisMonth?.id ?? null,
@@ -226,7 +228,166 @@ export class WealthService {
       totalBudgeted,
       totalSpent,
       remaining: remainingBudget(totalBudgeted, totalSpent),
+      leftover,
       lines,
+    };
+  }
+
+  private async buildLeftover(userId: string, year: number, month: number) {
+    const prior = shiftMonth(year, month, -1);
+    const priorBounds = monthBounds(prior.year, prior.month);
+    const focusBounds = monthBounds(year, month);
+    const [
+      priorFlow,
+      focusFlow,
+      priorBills,
+      focusBills,
+      priorVariable,
+      focusVariable,
+      priorLoans,
+      focusLoans,
+      variableCategories,
+    ] = await Promise.all([
+      this.getCashflow(userId, priorBounds.periodStart, priorBounds.periodEnd),
+      this.getCashflow(userId, focusBounds.periodStart, focusBounds.periodEnd),
+      buildBillChecklist(this.prisma, this.fx, userId, prior.year, prior.month, null),
+      buildBillChecklist(this.prisma, this.fx, userId, year, month, null),
+      this.kindTotals(userId, priorBounds.periodStart, priorBounds.periodEnd, "variable"),
+      this.kindTotals(userId, focusBounds.periodStart, focusBounds.periodEnd, "variable"),
+      this.loanTransferTotal(userId, priorBounds.periodStart, priorBounds.periodEnd),
+      this.loanTransferTotal(userId, focusBounds.periodStart, focusBounds.periodEnd),
+      this.prisma.category.findMany({
+        where: {
+          userId,
+          isVariable: true,
+          kind: CategoryKind.EXPENSE,
+          deletedAt: null,
+        },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+
+    const priorSurplus = monthSurplus(
+      priorFlow.income,
+      priorFlow.spending,
+      priorLoans.total,
+    );
+    const afterBills = roundCents(priorFlow.income - priorBills.paidSpend);
+    const moneyIn = roundCents(priorSurplus + focusFlow.income);
+    const expectedBills = roundCents(
+      focusBills.categories.reduce((sum, category) => sum + category.expected, 0),
+    );
+    const loanReserve = focusLoans.total > 0 ? focusLoans.total : priorLoans.total;
+    const spendingLimit = roundCents(
+      moneyIn - expectedBills - priorVariable.total - loanReserve,
+    );
+    const now = new Date();
+    const monthClosed =
+      now.getFullYear() > year ||
+      (now.getFullYear() === year && now.getMonth() + 1 > month);
+
+    return {
+      priorMonthLabel: `${monthName(prior.year, prior.month)} ${prior.year}`,
+      priorSurplus,
+      priorSurplusLabel:
+        priorSurplus >= 0 ? "Surplus from last month" : "Shortfall from last month",
+      afterBillsInsight: afterBills,
+      incomeThisMonth: focusFlow.income,
+      incomeIncomplete: !monthClosed,
+      expectedBills,
+      billsByCategory: focusBills.categories
+        .filter((category) => category.expected > 0 || category.spentThisMonth > 0)
+        .map((category) => ({
+          categoryId: category.categoryId,
+          name: category.name,
+          color: category.color,
+          icon: category.icon,
+          isEssential: category.isEssential,
+          expected: category.expected,
+          spent: category.spentThisMonth,
+        })),
+      variableLastMonth: priorVariable.total,
+      variableThisMonth: focusVariable.total,
+      variableCategories: variableCategories.map((category) => ({
+        categoryId: category.id,
+        name: category.name,
+        color: category.color,
+        icon: category.icon,
+      })),
+      loanLastMonth: priorLoans.total,
+      loanThisMonth: focusLoans.total,
+      loanItems: priorLoans.items.length > 0 ? priorLoans.items : focusLoans.items,
+      likelyPayDays: focusBills.likelyPayDays,
+      spendingLimit,
+      moneyIn,
+    };
+  }
+
+  private async kindTotals(
+    userId: string,
+    periodStart: Date,
+    periodEnd: Date,
+    kind: "variable",
+  ) {
+    const rows = await this.categoryTotals(
+      userId,
+      periodStart,
+      periodEnd,
+      CategoryKind.EXPENSE,
+    );
+    const categories = await this.prisma.category.findMany({
+      where: { userId, isVariable: true, deletedAt: null },
+      select: { id: true },
+    });
+    const ids = new Set(categories.map((category) => category.id));
+    const matched = rows.filter((row) => ids.has(row.categoryId));
+    return {
+      total: roundCents(matched.reduce((sum, row) => sum + row.total, 0)),
+      rows: matched,
+    };
+  }
+
+  private async loanTransferTotal(
+    userId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ) {
+    const rates = await this.fx.getRates();
+    const rows = await this.prisma.wealthItemLedger.findMany({
+      where: {
+        role: { in: ["REPAYMENT"] },
+        wealthItem: { userId, side: "LIABILITY" },
+        transaction: { bookedAt: { gte: periodStart, lte: periodEnd } },
+      },
+      include: {
+        wealthItem: { select: { id: true, name: true } },
+        transaction: { select: { amount: true, currency: true } },
+      },
+    });
+    const byItem = new Map<string, { id: string; name: string; total: number }>();
+    for (const row of rows) {
+      const amount = Math.abs(
+        this.fx.toEur(
+          toNumber(row.transaction.amount),
+          row.transaction.currency,
+          rates,
+        ),
+      );
+      const current = byItem.get(row.wealthItem.id) ?? {
+        id: row.wealthItem.id,
+        name: row.wealthItem.name,
+        total: 0,
+      };
+      current.total += amount;
+      byItem.set(row.wealthItem.id, current);
+    }
+    const items = [...byItem.values()].map((item) => ({
+      ...item,
+      total: roundCents(item.total),
+    }));
+    return {
+      total: roundCents(items.reduce((sum, item) => sum + item.total, 0)),
+      items,
     };
   }
 
@@ -622,36 +783,50 @@ export class WealthService {
     const userId = await this.demoUserId();
     await this.categories.ensureDefaults(userId);
     const range = this.resolvePeriod(query);
-    const { periodStart, periodEnd } = range;
-    const [categories, spentRows] = await Promise.all([
-      this.prisma.category.findMany({
-        where: {
-          userId,
-          isBill: true,
-          kind: CategoryKind.EXPENSE,
-          deletedAt: null,
+    const { year, month } = budgetMonthFromPeriod(range);
+    const calendarNote =
+      range.kind === "month"
+        ? null
+        : `Paid / not paid is ${monthName(year, month)} ${year}, not ${range.label}.`;
+    return buildBillChecklist(
+      this.prisma,
+      this.fx,
+      userId,
+      year,
+      month,
+      calendarNote,
+    );
+  }
+
+  async upsertBillPayee(input: {
+    categoryId: string;
+    payeeLabel: string;
+    status: "CONFIRMED" | "IGNORED";
+  }) {
+    const userId = await this.demoUserId();
+    const category = await this.prisma.category.findFirst({
+      where: {
+        id: input.categoryId,
+        userId,
+        isBill: true,
+        deletedAt: null,
+      },
+    });
+    if (!category) throw new NotFoundException("Bill category not found");
+    return this.prisma.confirmedBillPayee.upsert({
+      where: {
+        categoryId_payeeLabel: {
+          categoryId: input.categoryId,
+          payeeLabel: input.payeeLabel,
         },
-        orderBy: { name: "asc" },
-      }),
-      this.categoryTotals(userId, periodStart, periodEnd, CategoryKind.EXPENSE),
-    ]);
-    const spentByCategory = new Map(spentRows.map((row) => [row.categoryId, row]));
-    return categories.map((category) => {
-      const spent = spentByCategory.get(category.id);
-      const spentThisMonth = spent?.total ?? 0;
-      return {
-        id: category.id,
-        categoryId: category.id,
-        name: category.name,
-        color: category.color,
-        icon: category.icon,
-        cadence: category.billCadence,
-        isEssential: category.isEssential,
-        spentThisMonth,
-        transactionCount: spent?.count ?? 0,
-        typicalAmount: spentThisMonth,
-        monthlyAmount: spentThisMonth,
-      };
+      },
+      create: {
+        userId,
+        categoryId: input.categoryId,
+        payeeLabel: input.payeeLabel,
+        status: input.status,
+      },
+      update: { status: input.status },
     });
   }
 
@@ -725,19 +900,69 @@ export class WealthService {
   async listGoals() {
     const userId = await this.demoUserId();
     const bills = await this.listBills();
-    const essentialMonthly = bills
-      .filter((bill) => bill.isEssential)
-      .reduce((sum, bill) => sum + bill.monthlyAmount, 0);
+    const essentialMonthly = bills.essentialExpected;
     const suggestedEmergency = emergencyFundTarget(essentialMonthly, 3);
-    const goals = await this.prisma.savingsGoal.findMany({
-      where: { userId },
-      include: { account: { select: { id: true, name: true, currentBalance: true } } },
-      orderBy: { createdAt: "asc" },
-    });
+    const [goals, rates] = await Promise.all([
+      this.prisma.savingsGoal.findMany({
+        where: { userId },
+        include: {
+          account: { select: { id: true, name: true, currentBalance: true } },
+          fundings: {
+            include: {
+              transaction: {
+                include: {
+                  account: { select: { id: true, name: true } },
+                  category: { select: { id: true, name: true } },
+                },
+              },
+            },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      }),
+      this.fx.getRates(),
+    ]);
+    const accountIds = goals
+      .map((goal) => goal.accountId)
+      .filter((value): value is string => Boolean(value));
+    const inbound =
+      accountIds.length === 0
+        ? []
+        : await this.prisma.transaction.findMany({
+            where: { accountId: { in: accountIds }, amount: { gt: 0 } },
+            orderBy: { bookedAt: "desc" },
+            include: {
+              account: { select: { id: true, name: true } },
+              category: { select: { id: true, name: true } },
+            },
+          });
+    const inboundByAccount = new Map<string, typeof inbound>();
+    for (const row of inbound) {
+      const list = inboundByAccount.get(row.accountId) ?? [];
+      if (list.length < 12) list.push(row);
+      inboundByAccount.set(row.accountId, list);
+    }
+
     return goals.map((goal) => {
-      const linked = goal.account ? toNumber(goal.account.currentBalance) : null;
-      const currentAmount = linked ?? toNumber(goal.currentAmount);
+      const assigned = goal.fundings
+        .filter((funding) => funding.transaction.accountId !== goal.accountId)
+        .map((funding) =>
+          this.serializeGoalTx("assigned", funding.transaction, rates),
+        );
+      const accountTrail = (goal.accountId
+        ? inboundByAccount.get(goal.accountId) ?? []
+        : []
+      ).map((tx) => this.serializeGoalTx("account", tx, rates));
+      const accountAmount = goal.account
+        ? Math.max(toNumber(goal.account.currentBalance), 0)
+        : 0;
+      const assignedAmount = assigned.reduce((sum, row) => sum + row.amount, 0);
+      const currentAmount = Math.round((accountAmount + assignedAmount) * 100) / 100;
       const targetAmount = toNumber(goal.targetAmount);
+      const trail = [...assigned, ...accountTrail].sort(
+        (left, right) => Date.parse(right.bookedAt) - Date.parse(left.bookedAt),
+      );
       return {
         id: goal.id,
         name: goal.name,
@@ -745,9 +970,12 @@ export class WealthService {
         targetAmount,
         targetDate: goal.targetDate?.toISOString() ?? null,
         currentAmount,
+        accountAmount,
+        assignedAmount,
         accountId: goal.accountId,
         accountName: goal.account?.name ?? null,
         notes: goal.notes,
+        trail,
         progress:
           targetAmount > 0
             ? Math.round((currentAmount / targetAmount) * 1000) / 10
@@ -760,6 +988,7 @@ export class WealthService {
 
   async createGoal(input: UpsertGoalInput) {
     const userId = await this.demoUserId();
+    const accountId = await this.requireGoalAccount(userId, input.accountId);
     return this.prisma.savingsGoal.create({
       data: {
         userId,
@@ -767,30 +996,93 @@ export class WealthService {
         kind: input.kind,
         targetAmount: input.targetAmount,
         targetDate: input.targetDate ? new Date(input.targetDate) : null,
-        currentAmount: input.currentAmount,
-        accountId: input.accountId ?? null,
+        currentAmount: 0,
+        accountId,
         notes: input.notes ?? null,
       },
     });
   }
 
-  async addGoalAmount(id: string, amount: number) {
+  async assignGoalTransaction(id: string, transactionId: string) {
     const userId = await this.demoUserId();
     const goal = await this.requireGoal(userId, id);
-    if (goal.accountId) {
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { id: transactionId, account: { userId } },
+      include: { account: { select: { id: true } } },
+    });
+    if (!transaction) throw new NotFoundException("Transaction not found");
+    if (goal.accountId && transaction.accountId === goal.accountId) {
       throw new BadRequestException(
-        "This pot follows a linked account. Transfer into that account (or unlink it) instead of logging a manual add.",
+        "That transaction already sits in the linked account, so it is already counted.",
       );
     }
-    return this.prisma.savingsGoal.update({
-      where: { id },
-      data: { currentAmount: toNumber(goal.currentAmount) + amount },
+    const existing = await this.prisma.goalFunding.findUnique({
+      where: { transactionId },
     });
+    if (existing) {
+      throw new BadRequestException("That transaction already funds a goal.");
+    }
+    await this.prisma.goalFunding.create({
+      data: { goalId: goal.id, transactionId },
+    });
+    return this.listGoals().then((goals) => goals.find((item) => item.id === id));
+  }
+
+  async unassignGoalTransaction(id: string, transactionId: string) {
+    const userId = await this.demoUserId();
+    await this.requireGoal(userId, id);
+    const funding = await this.prisma.goalFunding.findFirst({
+      where: { goalId: id, transactionId },
+    });
+    if (!funding) throw new NotFoundException("Funding not found");
+    await this.prisma.goalFunding.delete({ where: { id: funding.id } });
+    return { deleted: true };
+  }
+
+  async listGoalCandidates(id: string) {
+    const userId = await this.demoUserId();
+    const goal = await this.requireGoal(userId, id);
+    const assigned = await this.prisma.goalFunding.findMany({
+      where: { goal: { userId } },
+      select: { transactionId: true },
+    });
+    const assignedIds = assigned.map((row) => row.transactionId);
+    const since = new Date();
+    since.setDate(since.getDate() - 90);
+    const rates = await this.fx.getRates();
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        account: { userId, isActive: true },
+        bookedAt: { gte: since },
+        id: assignedIds.length > 0 ? { notIn: assignedIds } : undefined,
+        ...(goal.accountId ? { accountId: { not: goal.accountId } } : {}),
+      },
+      include: {
+        account: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+      },
+      orderBy: { bookedAt: "desc" },
+      take: 40,
+    });
+    return rows
+      .map((tx) => this.serializeGoalTx("assigned", tx, rates))
+      .sort((left, right) => {
+        const rank = (name: string | null) => {
+          const label = (name ?? "").toLowerCase();
+          if (label.includes("atm")) return 0;
+          if (label.includes("transfer")) return 1;
+          return 2;
+        };
+        const diff = rank(left.categoryName) - rank(right.categoryName);
+        if (diff !== 0) return diff;
+        return Date.parse(right.bookedAt) - Date.parse(left.bookedAt);
+      });
   }
 
   async updateGoal(id: string, input: UpsertGoalInput) {
     const userId = await this.demoUserId();
     await this.requireGoal(userId, id);
+    const accountId = await this.requireGoalAccount(userId, input.accountId);
     return this.prisma.savingsGoal.update({
       where: { id },
       data: {
@@ -798,8 +1090,8 @@ export class WealthService {
         kind: input.kind,
         targetAmount: input.targetAmount,
         targetDate: input.targetDate ? new Date(input.targetDate) : null,
-        currentAmount: input.currentAmount,
-        accountId: input.accountId ?? null,
+        currentAmount: 0,
+        accountId,
         notes: input.notes ?? null,
       },
     });
@@ -830,10 +1122,17 @@ export class WealthService {
 
   async getNetWorth(userId?: string) {
     const id = userId ?? (await this.demoUserId());
-    const [accounts, items, holdings] = await Promise.all([
+    const [accounts, items, holdings, rates] = await Promise.all([
       this.prisma.account.findMany({ where: { userId: id, isActive: true } }),
-      this.prisma.wealthItem.findMany({ where: { userId: id } }),
+      this.prisma.wealthItem.findMany({
+        where: { userId: id },
+        include: {
+          ledgers: { include: { transaction: true } },
+          valuations: { orderBy: { asOf: "asc" } },
+        },
+      }),
       this.prisma.holding.findMany({ where: { userId: id } }),
+      this.fx.getRates(),
     ]);
 
     const linkedAccountIds = new Set(
@@ -864,51 +1163,37 @@ export class WealthService {
       return sum + holdingMarketValue(toNumber(holding.quantity), price);
     }, 0);
 
-    const sumClass = (cls: WealthClass, side: "ASSET" | "LIABILITY") =>
-      items
+    const serialized = items.map((item) =>
+      this.serializeWealthItem(item, accounts, rates),
+    );
+    const valueOf = (cls: WealthClass, side: "ASSET" | "LIABILITY") =>
+      serialized
         .filter((item) => item.side === side && item.class === cls)
-        .reduce((sum, item) => {
-          if (item.accountId) {
-            const account = accounts.find((row) => row.id === item.accountId);
-            return (
-              sum +
-              (account
-                ? Math.max(toNumber(account.currentBalance), 0)
-                : toNumber(item.currentValue))
-            );
-          }
-          return sum + toNumber(item.currentValue);
-        }, 0);
+        .reduce((sum, item) => sum + item.currentValue, 0);
 
-    const pension = sumClass("PENSION", "ASSET");
-    const property = sumClass("PROPERTY", "ASSET");
-    const vehicles = sumClass("VEHICLE", "ASSET");
+    const pension = valueOf("PENSION", "ASSET");
+    const property = valueOf("PROPERTY", "ASSET");
+    const vehicles = valueOf("VEHICLE", "ASSET");
     const otherAssets =
-      sumClass("OTHER", "ASSET") + sumClass("BANK_CASH", "ASSET");
+      valueOf("OTHER", "ASSET") + valueOf("BANK_CASH", "ASSET");
     const investments = Math.round(
-      (holdingsValue + sumClass("INVESTMENT", "ASSET")) * 100,
+      (holdingsValue + valueOf("INVESTMENT", "ASSET")) * 100,
     ) / 100;
-    const mortgage = sumClass("MORTGAGE", "LIABILITY");
-    const otherDebts = items
+    const mortgage = valueOf("MORTGAGE", "LIABILITY");
+    const otherDebts = serialized
       .filter((item) => item.side === "LIABILITY" && item.class !== "MORTGAGE")
-      .reduce((sum, item) => sum + toNumber(item.currentValue), 0);
+      .reduce((sum, item) => sum + item.currentValue, 0);
 
     const assets =
       bankCash +
-      items
+      serialized
         .filter((item) => item.side === "ASSET")
-        .reduce((sum, item) => {
-          if (item.accountId) {
-            const account = accounts.find((row) => row.id === item.accountId);
-            return sum + (account ? Math.max(toNumber(account.currentBalance), 0) : toNumber(item.currentValue));
-          }
-          return sum + toNumber(item.currentValue);
-        }, 0) +
+        .reduce((sum, item) => sum + item.currentValue, 0) +
       holdingsValue;
 
-    const liabilities = items
+    const liabilities = serialized
       .filter((item) => item.side === "LIABILITY")
-      .reduce((sum, item) => sum + toNumber(item.currentValue), 0);
+      .reduce((sum, item) => sum + item.currentValue, 0);
 
     const netWorth = Math.round((assets - liabilities) * 100) / 100;
     return {
@@ -927,7 +1212,7 @@ export class WealthService {
         mortgage: Math.round(mortgage * 100) / 100,
         otherDebts: Math.round(otherDebts * 100) / 100,
       },
-      items: items.map((item) => this.serializeWealthItem(item, accounts)),
+      items: serialized,
     };
   }
 
@@ -978,9 +1263,23 @@ export class WealthService {
 
   async createWealthItem(input: UpsertWealthItemInput) {
     const userId = await this.demoUserId();
-    return this.prisma.wealthItem.create({
+    const created = await this.prisma.wealthItem.create({
       data: this.wealthItemData(userId, input),
     });
+    if (input.class !== "PENSION" && (input.currentValue ?? 0) > 0) {
+      const asOf = input.openingAsOf
+        ? prismaDateOnly(input.openingAsOf)
+        : prismaDateOnly(formatDateOnly(new Date()));
+      await this.prisma.wealthItemValuation.create({
+        data: {
+          wealthItemId: created.id,
+          asOf,
+          value: input.currentValue ?? 0,
+          source: WealthValuationSource.OPENING,
+        },
+      });
+    }
+    return created;
   }
 
   async updateWealthItem(id: string, input: UpsertWealthItemInput) {
@@ -997,6 +1296,138 @@ export class WealthService {
     await this.requireWealthItem(userId, id);
     await this.prisma.wealthItem.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  async assignWealthTransaction(
+    id: string,
+    transactionId: string,
+    role: "PURCHASE" | "OPENING" | "REPAYMENT" | "INCREASE",
+  ) {
+    const userId = await this.demoUserId();
+    await this.requireWealthItem(userId, id);
+    const tx = await this.prisma.transaction.findFirst({
+      where: { id: transactionId, account: { userId } },
+    });
+    if (!tx) throw new NotFoundException("Transaction not found");
+    return this.prisma.wealthItemLedger.create({
+      data: { wealthItemId: id, transactionId, role },
+    });
+  }
+
+  async unassignWealthTransaction(id: string, transactionId: string) {
+    const userId = await this.demoUserId();
+    await this.requireWealthItem(userId, id);
+    await this.prisma.wealthItemLedger.deleteMany({
+      where: { wealthItemId: id, transactionId },
+    });
+    return { deleted: true };
+  }
+
+  async listWealthCandidates(id: string) {
+    const userId = await this.demoUserId();
+    const item = await this.requireWealthItem(userId, id);
+    const assigned = await this.prisma.wealthItemLedger.findMany({
+      select: { transactionId: true },
+    });
+    const assignedIds = assigned.map((row) => row.transactionId);
+    const start = new Date();
+    start.setDate(start.getDate() - 365);
+    const amountFilter =
+      item.side === "LIABILITY"
+        ? undefined
+        : { lt: 0 as const };
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        account: { userId },
+        id: { notIn: assignedIds },
+        bookedAt: { gte: start },
+        ...(amountFilter ? { amount: amountFilter } : {}),
+      },
+      orderBy: { bookedAt: "desc" },
+      take: 80,
+      include: {
+        account: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+      },
+    });
+    const rates = await this.fx.getRates();
+    return rows.map((tx) => this.serializeGoalTx("assigned", tx, rates));
+  }
+
+  async addWealthValuation(
+    id: string,
+    input: {
+      asOf: string;
+      value?: number;
+      percentChange?: number;
+      amountChange?: number;
+      note?: string | null;
+    },
+  ) {
+    const userId = await this.demoUserId();
+    const item = await this.requireWealthItem(userId, id);
+    const netWorth = await this.getNetWorth(userId);
+    const current =
+      netWorth.items.find((row) => row.id === id)?.currentValue ??
+      toNumber(item.currentValue);
+    let next = input.value;
+    let source: "MANUAL_AMOUNT" | "MANUAL_PERCENT" = "MANUAL_AMOUNT";
+    if (next == null && input.percentChange != null) {
+      next = roundCents(current * (1 + input.percentChange / 100));
+      source = "MANUAL_PERCENT";
+    } else if (next == null && input.amountChange != null) {
+      next = roundCents(current + input.amountChange);
+    }
+    if (next == null) {
+      throw new BadRequestException("Provide a value, percent change, or amount change");
+    }
+    const asOf = prismaDateOnly(input.asOf);
+    await this.prisma.wealthItemValuation.upsert({
+      where: {
+        wealthItemId_asOf_source: {
+          wealthItemId: id,
+          asOf,
+          source,
+        },
+      },
+      create: {
+        wealthItemId: id,
+        asOf,
+        value: next,
+        source,
+        note: input.note ?? null,
+      },
+      update: { value: next, note: input.note ?? null },
+    });
+    await this.prisma.wealthItem.update({
+      where: { id },
+      data: { currentValue: next },
+    });
+    return { value: next };
+  }
+
+  async getWealthItemSeries(id: string) {
+    const userId = await this.demoUserId();
+    const item = await this.prisma.wealthItem.findFirst({
+      where: { id, userId },
+      include: {
+        ledgers: { include: { transaction: true } },
+        valuations: { orderBy: { asOf: "asc" } },
+      },
+    });
+    if (!item) throw new NotFoundException("Item not found");
+    const accounts = await this.prisma.account.findMany({
+      where: { userId, isActive: true },
+    });
+    const rates = await this.fx.getRates();
+    const now = new Date();
+    const window = chartWindowFromFocus(now.getFullYear(), now.getMonth() + 1);
+    const serialized = this.serializeWealthItem(item, accounts, rates);
+    return {
+      item: serialized,
+      windowLabel: `${formatDateOnly(window.start)} – ${formatDateOnly(window.end)}`,
+      points: serialized.series,
+    };
   }
 
   async getDebts(order: "avalanche" | "snowball" = "avalanche") {
@@ -1121,18 +1552,16 @@ export class WealthService {
   async getSeries(query: SpendingPeriodInput = {}) {
     const userId = await this.demoUserId();
     const range = this.resolvePeriod(query);
+    const focus = budgetMonthFromPeriod(range);
+    const window = chartWindowFromFocus(focus.year, focus.month);
     const now = new Date();
-    const capEnd = range.periodEnd.getTime() > now.getTime() ? now : range.periodEnd;
-    let start = new Date(range.periodStart);
+    const capEnd =
+      window.end.getTime() > now.getTime() ? now : window.end;
+    const start = new Date(window.start);
     start.setHours(0, 0, 0, 0);
     const end = new Date(capEnd);
     end.setHours(0, 0, 0, 0);
-    const maxDays = 400;
-    const dayMs = 24 * 60 * 60 * 1000;
-    if ((end.getTime() - start.getTime()) / dayMs > maxDays) {
-      start = new Date(end);
-      start.setDate(start.getDate() - maxDays);
-    }
+    const chartLabel = `${monthName(shiftMonth(focus.year, focus.month, -3).year, shiftMonth(focus.year, focus.month, -3).month)}–${monthName(focus.year, focus.month)} ${focus.year}`;
 
     const dates: string[] = [];
     const cursor = new Date(start);
@@ -1154,7 +1583,7 @@ export class WealthService {
       this.prisma.transaction.findMany({
         where: {
           isSplit: false,
-          bookedAt: { gte: start, lte: range.periodEnd },
+          bookedAt: { gte: start, lte: end },
           account: { userId },
           category: {
             kind: { in: [CategoryKind.INCOME, CategoryKind.EXPENSE] },
@@ -1174,7 +1603,7 @@ export class WealthService {
       where: {
         transaction: {
           isSplit: true,
-          bookedAt: { gte: start, lte: range.periodEnd },
+          bookedAt: { gte: start, lte: end },
           account: { userId },
         },
         category: {
@@ -1245,8 +1674,8 @@ export class WealthService {
     }
 
     return {
-      periodLabel: range.label,
-      truncated: start.getTime() > range.periodStart.getTime(),
+      periodLabel: chartLabel,
+      truncated: false,
       netWorth: netWorthPoints,
       income,
       spending,
@@ -1260,7 +1689,7 @@ export class WealthService {
       name: input.name,
       side: input.side as WealthSide,
       class: input.class as WealthClass,
-      currentValue: input.currentValue,
+      currentValue: input.currentValue ?? 0,
       accountId: input.accountId ?? null,
       interestRate: input.interestRate ?? null,
       minimumPayment: input.minimumPayment ?? null,
@@ -1270,6 +1699,7 @@ export class WealthService {
       employerContributionMonthly: input.employerContributionMonthly ?? null,
       stateContributionMonthly: input.stateContributionMonthly ?? null,
       notes: input.notes ?? null,
+      depreciationPercentYearly: input.depreciationPercentYearly ?? null,
     };
   }
 
@@ -1289,25 +1719,148 @@ export class WealthService {
       employerContributionMonthly: { toString(): string } | null;
       stateContributionMonthly: { toString(): string } | null;
       notes: string | null;
+      depreciationPercentYearly?: { toString(): string } | null;
+      ledgers?: Array<{
+        role: string;
+        transaction: {
+          amount: { toString(): string };
+          currency: string;
+          bookedAt: Date;
+          description: string;
+          payeeLabel: string | null;
+          id: string;
+        };
+      }>;
+      valuations?: Array<{
+        asOf: Date;
+        value: { toString(): string };
+        source: string;
+        note: string | null;
+      }>;
     },
-    accounts: Array<{ id: string; name: string; currentBalance: { toString(): string } }>,
+    accounts: Array<{
+      id: string;
+      name: string;
+      currentBalance: { toString(): string };
+      accountType?: string | null;
+    }>,
+    rates: Record<string, number> = {},
   ) {
     const account = item.accountId
       ? accounts.find((row) => row.id === item.accountId)
       : null;
-    const currentValue = account
-      ? Math.max(toNumber(account.currentBalance), 0)
-      : toNumber(item.currentValue);
+    const stored = toNumber(item.currentValue);
+    const valuations = [...(item.valuations ?? [])].sort(
+      (left, right) => left.asOf.getTime() - right.asOf.getTime(),
+    );
+    const openingValuation = valuations.find((row) => row.source === "OPENING");
+    const latestValuation = valuations.at(-1);
+    const repayments = (item.ledgers ?? [])
+      .filter((row) => row.role === "REPAYMENT")
+      .sort(
+        (left, right) =>
+          left.transaction.bookedAt.getTime() - right.transaction.bookedAt.getTime(),
+      );
+    const increases = (item.ledgers ?? []).filter((row) => row.role === "INCREASE");
+    const monthlyRate = item.interestRate
+      ? toNumber(item.interestRate) / 12
+      : 0;
+    const opening = openingValuation
+      ? toNumber(openingValuation.value)
+      : stored;
+    const window = chartWindowFromFocus(
+      new Date().getFullYear(),
+      new Date().getMonth() + 1,
+    );
+
+    let currentValue = stored;
+    let estimated = false;
+    let series: Array<{ date: string; value: number }> = [];
+
+    if (account) {
+      currentValue = Math.abs(toNumber(account.currentBalance));
+      series = [
+        { date: formatDateOnly(window.start), value: currentValue },
+        { date: formatDateOnly(window.end), value: currentValue },
+      ];
+    } else if (item.side === "LIABILITY") {
+      const payments = repayments.map((row) => ({
+        date: formatDateOnly(row.transaction.bookedAt),
+        amount: Math.abs(
+          this.fx.toEur(
+            toNumber(row.transaction.amount),
+            row.transaction.currency,
+            rates,
+          ),
+        ),
+      }));
+      const extra = increases.reduce(
+        (sum, row) =>
+          sum +
+          Math.abs(
+            this.fx.toEur(
+              toNumber(row.transaction.amount),
+              row.transaction.currency,
+              rates,
+            ),
+          ),
+        0,
+      );
+      currentValue = amortiseRemaining(
+        opening + extra,
+        monthlyRate,
+        payments.map((row) => ({ amount: row.amount })),
+      );
+      estimated = monthlyRate > 0;
+      series = amortisePoints(
+        opening + extra,
+        monthlyRate,
+        payments,
+        formatDateOnly(window.start),
+        formatDateOnly(window.end),
+      );
+    } else {
+      const dep = item.depreciationPercentYearly
+        ? toNumber(item.depreciationPercentYearly)
+        : 0;
+      const start = openingValuation?.asOf ?? item.valuations?.[0]?.asOf ?? new Date();
+      if (latestValuation && dep <= 0) {
+        currentValue = toNumber(latestValuation.value);
+      } else if (dep > 0) {
+        currentValue = depreciatedValue(opening, dep, start, new Date());
+        estimated = true;
+      }
+      const cursor = new Date(window.start);
+      while (cursor.getTime() <= window.end.getTime()) {
+        const asOf = new Date(cursor);
+        const dated = [...valuations]
+          .filter((row) => row.asOf.getTime() <= asOf.getTime())
+          .at(-1);
+        const value =
+          dep > 0
+            ? depreciatedValue(opening, dep, start, asOf)
+            : dated
+              ? toNumber(dated.value)
+              : currentValue;
+        series.push({ date: formatDateOnly(asOf), value });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
     return {
       id: item.id,
       name: item.name,
       side: item.side,
       class: item.class,
-      currentValue,
+      currentValue: roundCents(currentValue),
+      estimated,
       accountId: item.accountId,
       accountName: account?.name ?? null,
       interestRate: item.interestRate ? toNumber(item.interestRate) : null,
       minimumPayment: item.minimumPayment ? toNumber(item.minimumPayment) : null,
+      depreciationPercentYearly: item.depreciationPercentYearly
+        ? toNumber(item.depreciationPercentYearly)
+        : null,
       pensionKind: item.pensionKind,
       employerMatchAnnual: item.employerMatchAnnual
         ? toNumber(item.employerMatchAnnual)
@@ -1336,6 +1889,30 @@ export class WealthService {
           : 0,
       }),
       notes: item.notes,
+      unverified: !account && (item.ledgers?.length ?? 0) === 0 && valuations.length === 0 && item.class !== "PENSION",
+      trail: (item.ledgers ?? []).map((row) => ({
+        transactionId: row.transaction.id,
+        role: row.role,
+        amount: roundCents(
+          Math.abs(
+            this.fx.toEur(
+              toNumber(row.transaction.amount),
+              row.transaction.currency,
+              rates,
+            ),
+          ),
+        ),
+        bookedAt: row.transaction.bookedAt.toISOString(),
+        description: row.transaction.description,
+        payeeLabel: row.transaction.payeeLabel,
+      })),
+      valuations: valuations.map((row) => ({
+        asOf: formatDateOnly(row.asOf),
+        value: toNumber(row.value),
+        source: row.source,
+        note: row.note,
+      })),
+      series,
     };
   }
 
@@ -1541,6 +2118,46 @@ export class WealthService {
       ...bucket,
       total: Math.round(bucket.total * 100) / 100,
     }));
+  }
+
+  private serializeGoalTx(
+    source: "account" | "assigned",
+    tx: {
+      id: string;
+      amount: { toString(): string };
+      currency: string;
+      bookedAt: Date;
+      description: string;
+      payeeLabel: string | null;
+      account: { id: string; name: string };
+      category: { id: string; name: string } | null;
+    },
+    rates: Record<string, number>,
+  ) {
+    return {
+      id: tx.id,
+      transactionId: tx.id,
+      source,
+      amount: Math.round(
+        Math.abs(this.fx.toEur(toNumber(tx.amount), tx.currency, rates)) * 100,
+      ) / 100,
+      bookedAt: tx.bookedAt.toISOString(),
+      description: tx.description,
+      payeeLabel: tx.payeeLabel,
+      accountId: tx.account.id,
+      accountName: tx.account.name,
+      categoryId: tx.category?.id ?? null,
+      categoryName: tx.category?.name ?? null,
+    };
+  }
+
+  private async requireGoalAccount(userId: string, accountId?: string | null) {
+    if (!accountId) return null;
+    const account = await this.prisma.account.findFirst({
+      where: { id: accountId, userId, isActive: true },
+    });
+    if (!account) throw new NotFoundException("Account not found");
+    return account.id;
   }
 
   private async requireBill(userId: string, id: string) {

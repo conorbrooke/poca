@@ -1854,6 +1854,10 @@ button {
   font-weight: 650;
 }
 
+.waterflow .sheet-row:first-child {
+  border-top: 1px solid var(--border);
+}
+
 .sheet-total {
   border-bottom: none;
   margin-top: 0.25rem;

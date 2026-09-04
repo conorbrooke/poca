@@ -8,8 +8,10 @@ type CategoryKindFieldsProps = {
   disabled?: boolean;
   isBill?: boolean;
   isEssential?: boolean;
+  isVariable?: boolean;
   onBillChange?: (isBill: boolean) => void;
   onEssentialChange?: (isEssential: boolean) => void;
+  onVariableChange?: (isVariable: boolean) => void;
 };
 
 export function CategoryKindFields({
@@ -18,8 +20,10 @@ export function CategoryKindFields({
   disabled,
   isBill = false,
   isEssential = false,
+  isVariable = false,
   onBillChange,
   onEssentialChange,
+  onVariableChange,
 }: CategoryKindFieldsProps) {
   const hint =
     CATEGORY_KIND_OPTIONS.find((option) => option.id === value)?.hint ?? "";
@@ -56,7 +60,7 @@ export function CategoryKindFields({
           as a leak.
         </label>
       ) : null}
-      {value === "EXPENSE" && isBill && onEssentialChange ? (
+      {value === "EXPENSE" && onEssentialChange ? (
         <label className="bank-meta" style={{ display: "block", marginTop: "0.45rem" }}>
           <input
             type="checkbox"
@@ -64,7 +68,19 @@ export function CategoryKindFields({
             disabled={disabled}
             onChange={(event) => onEssentialChange(event.target.checked)}
           />{" "}
-          Essential (used for the emergency-fund target)
+          Essential (used for the emergency-fund target and variable living)
+        </label>
+      ) : null}
+      {value === "EXPENSE" && onVariableChange ? (
+        <label className="bank-meta" style={{ display: "block", marginTop: "0.45rem" }}>
+          <input
+            type="checkbox"
+            checked={isVariable}
+            disabled={disabled}
+            onChange={(event) => onVariableChange(event.target.checked)}
+          />{" "}
+          Variable living — groceries, fuel. Amounts change; last month is the
+          Budget reference.
         </label>
       ) : null}
     </div>

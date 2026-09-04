@@ -15,7 +15,7 @@ import type {
   UnsplitTransactionInput,
   UpdateSplitInput,
 } from "@poca/shared";
-import { isIncomeCategoryKind, isSpendingCategoryKind } from "@poca/shared";
+import { isIncomeCategoryKind, isSpendingCategoryKind, budgetMonthFromPeriod } from "@poca/shared";
 import { Prisma } from "@poca/db";
 import { PrismaService } from "../prisma/prisma.module";
 import { FxService } from "../fx/fx.service";
@@ -23,6 +23,7 @@ import { CategoriesService } from "./categories.service";
 import { mapTag, splitsOutOfBalance, toNumber } from "./mappers";
 import { resolveSpendingPeriod, roundMoney, toDateOnly } from "./period";
 import { TransfersService } from "./transfers.service";
+import { buildBillChecklist } from "../wealth/bill-checklist";
 
 const tagInclude = {
   tag: { select: { id: true, name: true, color: true, icon: true } },
@@ -71,14 +72,19 @@ export class SpendingService {
         cached.length > 0 &&
         this.fx.isConvertedCacheFresh(cached[0]!.computedAt)
       ) {
-        return this.buildSummaryFromRows(
+        return this.withBillFlex(
+          userId,
           period,
-          cached.map((row) => ({
-            category: row.category,
-            totalSpent: toNumber(row.totalSpent),
-            transactionCount: row.transactionCount,
-          })),
-          true,
+          this.buildSummaryFromRows(
+            period,
+            cached.map((row) => ({
+              category: row.category,
+              totalSpent: toNumber(row.totalSpent),
+              transactionCount: row.transactionCount,
+            })),
+            true,
+            "out",
+          ),
           "out",
         );
       }
@@ -525,7 +531,7 @@ export class SpendingService {
       }
     }
 
-    return this.buildSummaryFromRows(
+    const summary = this.buildSummaryFromRows(
       period,
       allGrouped.map((row) => ({
         category: row.category,
@@ -535,6 +541,7 @@ export class SpendingService {
       false,
       flow,
     );
+    return this.withBillFlex(userId, period, summary, flow);
   }
 
   private async groupCategoryTotals(
@@ -669,6 +676,7 @@ export class SpendingService {
         icon: string | null;
         isSystem: boolean;
         isBill?: boolean;
+        isVariable?: boolean;
         kind: import("@poca/db").CategoryKind;
       };
       totalSpent: number;
@@ -764,6 +772,7 @@ export class SpendingService {
           icon: row.category.icon,
           isSystem: row.category.isSystem,
           isBill: row.category.isBill,
+          isVariable: row.category.isVariable,
           kind: row.category.kind,
           totalSpent: row.totalSpent,
           transactionCount: row.transactionCount,
@@ -772,6 +781,34 @@ export class SpendingService {
               ? roundMoney((row.totalSpent / totalSpent) * 100)
               : 0,
         })),
+      billsPaid: 0,
+      flexSpent: totalSpent,
+    };
+  }
+
+  private async withBillFlex(
+    userId: string,
+    period: ResolvedSpendingPeriod,
+    summary: SpendingSummaryResponse,
+    flow: CashFlow,
+  ): Promise<SpendingSummaryResponse> {
+    if (flow !== "out") {
+      return { ...summary, billsPaid: 0, flexSpent: summary.totalSpent };
+    }
+    const { year, month } = budgetMonthFromPeriod(period);
+    const bills = await buildBillChecklist(
+      this.prisma,
+      this.fx,
+      userId,
+      year,
+      month,
+      null,
+    );
+    const billsPaid = bills.paidSpend;
+    return {
+      ...summary,
+      billsPaid,
+      flexSpent: roundMoney(summary.totalSpent - billsPaid),
     };
   }
 

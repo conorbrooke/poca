@@ -117,14 +117,15 @@ export function SyncClient() {
     setMessage(null);
 
     try {
-      const result = await apiFetch<LinkResponse>(
-        `/bank/connections/${connection.id}/resume`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ redirectUrl: bankRedirectUrl() }),
-        },
-      );
+      const path =
+        connection.status === "LINKED"
+          ? `/bank/connections/${connection.id}/reconnect`
+          : `/bank/connections/${connection.id}/resume`;
+      const result = await apiFetch<LinkResponse>(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirectUrl: bankRedirectUrl() }),
+      });
       window.location.href = result.link;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resume bank link");
@@ -431,6 +432,16 @@ export function SyncClient() {
                     >
                       View dashboard
                     </Link>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={isBusy}
+                      onClick={() => void resumeConnection(connection)}
+                    >
+                      {resumingId === connection.id
+                        ? "Redirecting…"
+                        : "Add accounts"}
+                    </button>
                     <button
                       type="button"
                       className="btn btn-secondary"

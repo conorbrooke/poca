@@ -29,6 +29,26 @@ type Overview = {
   income: number;
   spending: number;
   surplus: number;
+  leftover: {
+    priorMonthLabel: string;
+    priorSurplus: number;
+    priorSurplusLabel: string;
+    afterBillsInsight: number;
+    incomeThisMonth: number;
+    expectedBills: number;
+    billsByCategory: Array<{
+      categoryId: string;
+      name: string;
+      color: string;
+      isEssential: boolean;
+      expected: number;
+      spent: number;
+    }>;
+    variableLastMonth: number;
+    loanLastMonth: number;
+    spendingLimit: number;
+    moneyIn: number;
+  } | null;
   savingsRate: number;
   interestGross: number;
   interestAfterDirt: number;
@@ -226,9 +246,8 @@ export function WealthOverviewClient() {
               <div className="card">
                 <h2 className="section-title">Net worth</h2>
                 <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
-                  Daily reconstructed bank cash plus anything you have added
-                  (pension, property, debts).
-                  {series.truncated ? " Showing the latest 400 days." : ""}
+                  {series.periodLabel}. Daily reconstructed bank cash plus
+                  anything you have added (pension, property, debts).
                 </p>
                 <LineChart
                   series={[
@@ -244,7 +263,7 @@ export function WealthOverviewClient() {
               <div className="card">
                 <h2 className="section-title">Growing / shrinking</h2>
                 <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
-                  Cumulative surplus for {data.periodLabel}. Up means you kept
+                  Cumulative surplus for {series.periodLabel}. Up means you kept
                   more than you spent.
                 </p>
                 <LineChart
@@ -350,8 +369,62 @@ export function WealthOverviewClient() {
           <div className="card" style={{ marginTop: "1rem" }}>
             <h2 className="section-title">This period</h2>
             <p className="bank-meta" style={{ marginBottom: "0.75rem" }}>
-              {data.periodLabel}. Bills are included in spending, not a separate pot.
+              {data.periodLabel}. Spending is all expenses. Flex on Spending
+              excludes paid bills.
             </p>
+            {data.leftover ? (
+              <>
+                <div className="waterflow">
+                <div className="sheet-row">
+                  <span>{data.leftover.priorSurplusLabel}</span>
+                  <span className="sheet-row-value">
+                    {formatMoney(data.leftover.priorSurplus, "EUR", { signed: true })}
+                  </span>
+                </div>
+                <div className="sheet-row">
+                  <span>This month’s income (in progress)</span>
+                  <span className="sheet-row-value">
+                    {formatMoney(data.leftover.incomeThisMonth)}
+                  </span>
+                </div>
+                {data.leftover.billsByCategory.map((row) => (
+                  <div key={row.categoryId} className="sheet-row">
+                    <span>
+                      {row.name}
+                      {row.isEssential ? " · essential" : " · flexible"}
+                    </span>
+                    <span className="sheet-row-value">
+                      {formatMoney(row.expected)}
+                    </span>
+                  </div>
+                ))}
+                <div className="sheet-row">
+                  <span>Variable living last month</span>
+                  <span className="sheet-row-value">
+                    {formatMoney(data.leftover.variableLastMonth)}
+                  </span>
+                </div>
+                {data.leftover.loanLastMonth > 0 ? (
+                  <div className="sheet-row">
+                    <span>Loan transfers last month</span>
+                    <span className="sheet-row-value">
+                      {formatMoney(data.leftover.loanLastMonth)}
+                    </span>
+                  </div>
+                ) : null}
+                <div className="sheet-total">
+                  <span>Spending limit</span>
+                  <span>{formatMoney(data.leftover.spendingLimit)}</span>
+                </div>
+                </div>
+                <p className="bank-meta" style={{ marginTop: "0.75rem" }}>
+                  After last month’s bills you had{" "}
+                  {formatMoney(data.leftover.afterBillsInsight)} that was actually
+                  free.
+                </p>
+              </>
+            ) : (
+              <>
             <div className="sheet-row">
               <span>Income</span>
               <span className="sheet-row-value">{formatMoney(data.income)}</span>
@@ -370,6 +443,8 @@ export function WealthOverviewClient() {
               <span>Surplus</span>
               <span>{formatMoney(data.surplus, "EUR", { signed: true })}</span>
             </div>
+              </>
+            )}
             <p className="bank-meta" style={{ marginTop: "0.75rem" }}>
               Budget remaining {formatMoney(data.remaining)}
               {data.overallCap

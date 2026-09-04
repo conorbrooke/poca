@@ -29,6 +29,19 @@ export function remainingBudget(budgeted: number, spent: number): number {
   return Math.round((budgeted - spent) * 100) / 100;
 }
 
+export function monthBounds(year: number, month: number) {
+  const periodStart = new Date(year, month - 1, 1);
+  periodStart.setHours(0, 0, 0, 0);
+  const periodEnd = new Date(year, month, 0);
+  periodEnd.setHours(23, 59, 59, 999);
+  return { periodStart, periodEnd };
+}
+
+export function shiftMonth(year: number, month: number, delta: number) {
+  const date = new Date(year, month - 1 + delta, 1);
+  return { year: date.getFullYear(), month: date.getMonth() + 1 };
+}
+
 export type DebtPayoffItem = {
   id: string;
   name: string;
@@ -58,6 +71,145 @@ export function holdingGain(
   price: number,
 ): number {
   return Math.round((price - averageCost) * quantity * 100) / 100;
+}
+
+export function roundCents(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+export function medianAmount(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return roundCents((sorted[mid - 1]! + sorted[mid]!) / 2);
+  }
+  return roundCents(sorted[mid]!);
+}
+
+export function monthSurplus(
+  income: number,
+  spending: number,
+  loanTransfers = 0,
+): number {
+  return roundCents(income - spending - loanTransfers);
+}
+
+export function billPayeeOnChecklist(input: {
+  cadence: "WEEKLY" | "MONTHLY" | "YEARLY";
+  lastMonthTotal: number;
+  lastOccurrenceMonth: number | null;
+  focusMonth: number;
+}): boolean {
+  if (input.cadence === "YEARLY") {
+    return (
+      input.lastOccurrenceMonth != null &&
+      input.lastOccurrenceMonth === input.focusMonth
+    );
+  }
+  return input.lastMonthTotal > 0;
+}
+
+export function isBillPayeePaid(thisMonthSpend: number, expected: number): boolean {
+  if (expected > 0) return roundCents(thisMonthSpend) >= roundCents(expected);
+  return thisMonthSpend > 0;
+}
+
+export function likelyPayDateThisMonth(
+  lastPayDate: Date,
+  year: number,
+  month: number,
+): string {
+  const lastDay = new Date(year, month, 0).getDate();
+  const day = Math.min(lastPayDate.getDate(), lastDay);
+  const date = new Date(year, month - 1, day);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function chartWindowFromFocus(year: number, month: number, now = new Date()) {
+  const start = new Date(year, month - 4, 1);
+  start.setHours(0, 0, 0, 0);
+  const monthEnd = new Date(year, month, 0);
+  monthEnd.setHours(23, 59, 59, 999);
+  const end = now.getTime() < monthEnd.getTime() ? now : monthEnd;
+  return { start, end };
+}
+
+export function applyLoanPayment(
+  remaining: number,
+  monthlyRate: number,
+  payment: number,
+): number {
+  const interest = roundCents(Math.max(0, remaining) * monthlyRate);
+  const principal = Math.min(
+    Math.max(0, remaining),
+    Math.max(0, roundCents(payment - interest)),
+  );
+  return roundCents(Math.max(0, remaining) - principal);
+}
+
+export function amortiseRemaining(
+  opening: number,
+  monthlyRate: number,
+  payments: Array<{ amount: number }>,
+): number {
+  return payments.reduce(
+    (remaining, payment) =>
+      applyLoanPayment(remaining, monthlyRate, payment.amount),
+    roundCents(opening),
+  );
+}
+
+export function amortisePoints(
+  opening: number,
+  monthlyRate: number,
+  payments: Array<{ date: string; amount: number }>,
+  fromDate: string,
+  toDate: string,
+): Array<{ date: string; value: number }> {
+  const sorted = [...payments].sort((left, right) =>
+    left.date.localeCompare(right.date),
+  );
+  const points: Array<{ date: string; value: number }> = [];
+  let remaining = roundCents(opening);
+  let index = 0;
+  const cursor = new Date(`${fromDate}T12:00:00`);
+  const end = new Date(`${toDate}T12:00:00`);
+  while (cursor.getTime() <= end.getTime()) {
+    const date = [
+      cursor.getFullYear(),
+      String(cursor.getMonth() + 1).padStart(2, "0"),
+      String(cursor.getDate()).padStart(2, "0"),
+    ].join("-");
+    while (index < sorted.length && sorted[index]!.date <= date) {
+      remaining = applyLoanPayment(
+        remaining,
+        monthlyRate,
+        sorted[index]!.amount,
+      );
+      index += 1;
+    }
+    points.push({ date, value: remaining });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return points;
+}
+
+export function depreciatedValue(
+  opening: number,
+  annualRate: number,
+  start: Date,
+  asOf: Date,
+): number {
+  if (annualRate <= 0 || asOf.getTime() <= start.getTime()) {
+    return roundCents(opening);
+  }
+  const years =
+    (asOf.getTime() - start.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+  return roundCents(opening * (1 - annualRate) ** years);
 }
 
 export function monthlyPensionInflow(input: {

@@ -141,5 +141,6 @@ export type CategoryOption = {
   kind: "EXPENSE" | "INCOME" | "TRANSFER";
   isBill?: boolean;
   isEssential?: boolean;
+  isVariable?: boolean;
   billCadence?: "WEEKLY" | "MONTHLY" | "YEARLY";
 };

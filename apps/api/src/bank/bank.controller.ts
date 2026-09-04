@@ -96,6 +96,17 @@ export class BankController {
     return this.bankService.resumeConnection(id, input.redirectUrl);
   }
 
+  @Post("connections/:id/reconnect")
+  reconnectConnection(@Param() params: unknown, @Body() body: unknown) {
+    const { id } = parseOrThrow(
+      connectionIdParamSchema,
+      params,
+      "Connection id param",
+    );
+    const input = parseOrThrow(resumeBankLinkSchema, body, "Reconnect bank body");
+    return this.bankService.reconnectConnection(id, input.redirectUrl);
+  }
+
   @Post("sync")
   syncTransactions(@Body() body: unknown) {
     const input = parseOrThrow(

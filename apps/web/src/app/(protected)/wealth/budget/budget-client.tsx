@@ -25,6 +25,36 @@ type Budget = {
   totalBudgeted: number;
   totalSpent: number;
   remaining: number;
+  leftover: {
+    priorMonthLabel: string;
+    priorSurplus: number;
+    priorSurplusLabel: string;
+    afterBillsInsight: number;
+    incomeThisMonth: number;
+    expectedBills: number;
+    billsByCategory: Array<{
+      categoryId: string;
+      name: string;
+      color: string;
+      icon: string | null;
+      isEssential: boolean;
+      expected: number;
+      spent: number;
+    }>;
+    variableLastMonth: number;
+    variableThisMonth: number;
+    loanLastMonth: number;
+    loanThisMonth: number;
+    loanItems: Array<{ id: string; name: string; total: number }>;
+    likelyPayDays: Array<{
+      payeeLabel: string;
+      categoryName: string;
+      date: string;
+      expected: number;
+    }>;
+    spendingLimit: number;
+    moneyIn: number;
+  } | null;
   lines: BudgetLine[];
 };
 
@@ -111,6 +141,62 @@ export function BudgetClient() {
       {error ? <div className="alert alert-error">{error}</div> : null}
       {budget ? (
         <>
+          {budget.leftover ? (
+            <div className="card" style={{ marginBottom: "1rem" }}>
+              <p className="page-eyebrow">{budget.leftover.priorMonthLabel}</p>
+              <h2 className="spending-total">
+                {formatMoney(budget.leftover.priorSurplus, "EUR", { signed: true })}
+              </h2>
+              <p className="bank-meta">
+                {budget.leftover.priorSurplusLabel} · rolled into this month.
+                This month’s income so far {formatMoney(budget.leftover.incomeThisMonth)}{" "}
+                (in progress). Money in {formatMoney(budget.leftover.moneyIn)}.
+              </p>
+              <p className="bank-meta" style={{ marginTop: "0.45rem" }}>
+                After last month’s bills you had{" "}
+                {formatMoney(budget.leftover.afterBillsInsight)} that was actually
+                free.
+              </p>
+              <div className="waterflow" style={{ marginTop: "1rem" }}>
+                {budget.leftover.billsByCategory.map((row) => (
+                  <div key={row.categoryId} className="sheet-row">
+                    <span>
+                      {row.icon ? `${row.icon} ` : ""}
+                      {row.name}
+                      {row.isEssential ? " · essential" : " · flexible"}
+                    </span>
+                    <span className="sheet-row-value">
+                      {formatMoney(row.spent)} / {formatMoney(row.expected)}
+                    </span>
+                  </div>
+                ))}
+                <div className="sheet-row">
+                  <span>Variable living (last month)</span>
+                  <span className="sheet-row-value">
+                    {formatMoney(budget.leftover.variableLastMonth)}
+                  </span>
+                </div>
+                {budget.leftover.loanItems.map((row) => (
+                  <div key={row.id} className="sheet-row">
+                    <span>{row.name} (loan transfer)</span>
+                    <span className="sheet-row-value">{formatMoney(row.total)}</span>
+                  </div>
+                ))}
+                <div className="sheet-total">
+                  <span>Spending limit</span>
+                  <span>{formatMoney(budget.leftover.spendingLimit)}</span>
+                </div>
+              </div>
+              {budget.leftover.likelyPayDays.length > 0 ? (
+                <p className="bank-meta" style={{ marginTop: "0.75rem" }}>
+                  Likely pay days:{" "}
+                  {budget.leftover.likelyPayDays
+                    .map((row) => `${row.payeeLabel} ${row.date.slice(8, 10)}`)
+                    .join(" · ")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="card" style={{ marginBottom: "1rem" }}>
             <p className="page-eyebrow">
               {budget.periodLabel ?? "This month"}

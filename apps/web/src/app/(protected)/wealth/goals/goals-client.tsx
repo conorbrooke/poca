@@ -1,20 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { SAVINGS_GOAL_KIND_OPTIONS } from "@poca/shared";
 import { apiFetch } from "../../../../lib/api";
-import { formatMoney } from "../../../../lib/format";
+import { formatDate, formatMoney } from "../../../../lib/format";
+
+type TrailTx = {
+  id: string;
+  transactionId: string;
+  source: "account" | "assigned";
+  amount: number;
+  bookedAt: string;
+  description: string;
+  payeeLabel: string | null;
+  accountName: string;
+  categoryId: string | null;
+  categoryName: string | null;
+};
 
 type Goal = {
   id: string;
   name: string;
   kind: string;
   targetAmount: number;
+  targetDate: string | null;
   currentAmount: number;
+  accountAmount: number;
+  assignedAmount: number;
   progress: number;
   suggestedEmergency: number | null;
   accountId: string | null;
   accountName: string | null;
+  notes: string | null;
+  trail: TrailTx[];
 };
 
 type AccountOption = { id: string; name: string; currentBalance: number };
@@ -23,15 +42,20 @@ function kindLabel(kind: string) {
   return SAVINGS_GOAL_KIND_OPTIONS.find((item) => item.id === kind)?.label ?? kind;
 }
 
+function txHref(tx: TrailTx) {
+  if (tx.categoryId) return `/spending/${tx.categoryId}`;
+  return "/spending";
+}
+
 export function GoalsClient() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [name, setName] = useState("Mortgage fund");
   const [kind, setKind] = useState("HOUSE");
   const [target, setTarget] = useState("");
-  const [current, setCurrent] = useState("");
   const [accountId, setAccountId] = useState("");
-  const [addAmounts, setAddAmounts] = useState<Record<string, string>>({});
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<TrailTx[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function reload() {
@@ -59,36 +83,17 @@ export function GoalsClient() {
           name,
           kind,
           targetAmount: Number(target),
-          currentAmount: Number(current || 0),
           accountId: accountId || null,
         }),
       });
       setTarget("");
-      setCurrent("");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save goal");
     }
   }
 
-  async function addMoney(goal: Goal) {
-    const amount = Number(addAmounts[goal.id] || 0);
-    if (!(amount > 0)) return;
-    setError(null);
-    try {
-      await apiFetch(`/wealth/goals/${goal.id}/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount }),
-      });
-      setAddAmounts((currentValue) => ({ ...currentValue, [goal.id]: "" }));
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add money");
-    }
-  }
-
-  async function unlink(goal: Goal) {
+  async function linkAccount(goal: Goal, nextAccountId: string) {
     setError(null);
     try {
       await apiFetch(`/wealth/goals/${goal.id}`, {
@@ -98,13 +103,49 @@ export function GoalsClient() {
           name: goal.name,
           kind: goal.kind,
           targetAmount: goal.targetAmount,
-          currentAmount: goal.currentAmount,
-          accountId: null,
+          accountId: nextAccountId || null,
         }),
       });
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not unlink account");
+      setError(err instanceof Error ? err.message : "Could not update account");
+    }
+  }
+
+  async function openAssign(goalId: string) {
+    setError(null);
+    setAssigningId(goalId);
+    try {
+      setCandidates(await apiFetch<TrailTx[]>(`/wealth/goals/${goalId}/candidates`));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load transactions");
+    }
+  }
+
+  async function assign(goalId: string, transactionId: string) {
+    setError(null);
+    try {
+      await apiFetch(`/wealth/goals/${goalId}/funding`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId }),
+      });
+      await reload();
+      setCandidates(await apiFetch<TrailTx[]>(`/wealth/goals/${goalId}/candidates`));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not assign transaction");
+    }
+  }
+
+  async function unassign(goalId: string, transactionId: string) {
+    setError(null);
+    try {
+      await apiFetch(`/wealth/goals/${goalId}/funding/${transactionId}`, {
+        method: "DELETE",
+      });
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove transaction");
     }
   }
 
@@ -114,10 +155,9 @@ export function GoalsClient() {
       <div className="card" style={{ marginBottom: "1rem" }}>
         <h2 className="section-title">Savings pots</h2>
         <p className="bank-meta" style={{ maxWidth: "62ch" }}>
-          A mortgage fund is a savings goal, not the mortgage itself. You can
-          type how much you have put aside, or link a dedicated savings account
-          so the pot follows that balance after each sync. You do not have to
-          connect an account.
+          A pot only grows when real money moves: a transfer into a linked
+          savings account, or a transaction you assign (ATM cash, and so on).
+          There is no typed-in balance.
         </p>
       </div>
       <div className="card" style={{ marginBottom: "1rem" }}>
@@ -151,22 +191,15 @@ export function GoalsClient() {
             value={target}
             onChange={(event) => setTarget(event.target.value)}
           />
-          <input
-            className="login-input"
-            type="number"
-            placeholder="Already saved €"
-            value={current}
-            onChange={(event) => setCurrent(event.target.value)}
-          />
           <select
             className="login-input"
             value={accountId}
             onChange={(event) => setAccountId(event.target.value)}
           >
-            <option value="">Track manually (no account)</option>
+            <option value="">No account yet — assign transactions</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name}
+                {account.name} ({formatMoney(account.currentBalance)})
               </option>
             ))}
           </select>
@@ -180,8 +213,9 @@ export function GoalsClient() {
           <div className="empty-state card">
             <h3>No pots yet</h3>
             <p>
-              Add a Mortgage fund with a target, then tap Add money whenever you
-              transfer into it — or link the savings account that holds it.
+              Link a savings account, or create a pot and assign ATM / transfer
+              transactions to it. The saved figure is those balances and
+              transactions — nothing else.
             </p>
           </div>
         ) : (
@@ -193,8 +227,11 @@ export function GoalsClient() {
                   <p className="bank-meta">
                     {kindLabel(goal.kind)} · {goal.progress}%
                     {goal.accountName
-                      ? ` · follows ${goal.accountName}`
-                      : " · manual"}
+                      ? ` · ${goal.accountName} ${formatMoney(goal.accountAmount)}`
+                      : ""}
+                    {goal.assignedAmount > 0
+                      ? ` · assigned ${formatMoney(goal.assignedAmount)}`
+                      : ""}
                     {goal.suggestedEmergency
                       ? ` · 3× bills would be ${formatMoney(goal.suggestedEmergency)}`
                       : ""}
@@ -204,44 +241,135 @@ export function GoalsClient() {
                   {formatMoney(goal.currentAmount)} / {formatMoney(goal.targetAmount)}
                 </p>
               </div>
-              {goal.accountId ? (
-                <p className="bank-meta" style={{ marginTop: "0.5rem" }}>
-                  Saved amount is this account’s balance. Transfer into it and
-                  sync the bank, or unlink to log adds by hand.
+
+              <label className="login-label" style={{ marginTop: "0.75rem" }}>
+                Linked account
+                <select
+                  className="login-input"
+                  value={goal.accountId ?? ""}
+                  onChange={(event) => void linkAccount(goal, event.target.value)}
+                >
+                  <option value="">None — transactions only</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} ({formatMoney(account.currentBalance)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <form
+                className="tag-chip-row"
+                style={{ marginTop: "0.75rem" }}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const form = event.currentTarget;
+                  const formData = new FormData(form);
+                  void apiFetch(`/wealth/goals/${goal.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      name: String(formData.get("name") || goal.name),
+                      kind: String(formData.get("kind") || goal.kind),
+                      targetAmount: Number(formData.get("target") || goal.targetAmount),
+                      targetDate: String(formData.get("date") || "") || null,
+                      accountId: goal.accountId,
+                      notes: String(formData.get("notes") || "") || null,
+                    }),
+                  }).then(reload);
+                }}
+              >
+                <input
+                  className="login-input"
+                  name="name"
+                  defaultValue={goal.name}
+                />
+                <select
+                  className="login-input"
+                  name="kind"
+                  defaultValue={goal.kind}
+                >
+                  {SAVINGS_GOAL_KIND_OPTIONS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="login-input"
+                  name="target"
+                  type="number"
+                  defaultValue={goal.targetAmount}
+                />
+                <input
+                  className="login-input"
+                  name="date"
+                  type="date"
+                  defaultValue={goal.targetDate?.slice(0, 10) ?? ""}
+                />
+                <input
+                  className="login-input"
+                  name="notes"
+                  placeholder="Notes"
+                  defaultValue={goal.notes ?? ""}
+                />
+                <button type="submit" className="btn btn-secondary">
+                  Save goal
+                </button>
+              </form>
+
+              <h3 className="section-title" style={{ marginTop: "1rem", fontSize: "0.95rem" }}>
+                Money trail
+              </h3>
+              {goal.trail.length === 0 ? (
+                <p className="bank-meta">
+                  {goal.accountId
+                    ? "No inbound transactions on this account yet. Transfer in and sync."
+                    : "Nothing assigned. Attach an ATM withdrawal or other transaction below."}
                 </p>
               ) : (
-                <div className="tag-chip-row" style={{ marginTop: "0.75rem" }}>
-                  <input
-                    className="login-input"
-                    type="number"
-                    placeholder="Add €"
-                    value={addAmounts[goal.id] ?? ""}
-                    onChange={(event) =>
-                      setAddAmounts((currentValue) => ({
-                        ...currentValue,
-                        [goal.id]: event.target.value,
-                      }))
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => void addMoney(goal)}
-                  >
-                    Add money
-                  </button>
+                <div className="spending-category-list" style={{ marginTop: "0.35rem" }}>
+                  {goal.trail.map((tx) => (
+                    <div key={`${tx.source}-${tx.id}`} className="spending-category-row">
+                      <div>
+                        <p className="spending-category-name">
+                          {tx.payeeLabel ?? tx.description}
+                        </p>
+                        <p className="bank-meta">
+                          {formatDate(tx.bookedAt)} · {tx.accountName}
+                          {tx.categoryName ? ` · ${tx.categoryName}` : ""}
+                          {tx.source === "assigned" ? " · assigned" : " · in account"}
+                        </p>
+                      </div>
+                      <p className="spending-category-amount">{formatMoney(tx.amount)}</p>
+                      <Link href={txHref(tx)} className="btn btn-secondary">
+                        Open
+                      </Link>
+                      {tx.source === "assigned" ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => void unassign(goal.id, tx.transactionId)}
+                        >
+                          Unassign
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               )}
-              <div className="tag-chip-row" style={{ marginTop: "0.5rem" }}>
-                {goal.accountId ? (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => void unlink(goal)}
-                  >
-                    Unlink account
-                  </button>
-                ) : null}
+
+              <div className="tag-chip-row" style={{ marginTop: "0.75rem" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() =>
+                    assigningId === goal.id
+                      ? setAssigningId(null)
+                      : void openAssign(goal.id)
+                  }
+                >
+                  {assigningId === goal.id ? "Hide transactions" : "Assign a transaction"}
+                </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -254,6 +382,41 @@ export function GoalsClient() {
                   Remove
                 </button>
               </div>
+
+              {assigningId === goal.id ? (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <p className="bank-meta" style={{ marginBottom: "0.5rem" }}>
+                    Last 90 days, excluding money already in the linked account.
+                    ATM withdrawals and transfers you want counted as cash toward
+                    this pot go here.
+                  </p>
+                  {candidates.length === 0 ? (
+                    <p className="bank-meta">No unassigned transactions in this window.</p>
+                  ) : (
+                    candidates.map((tx) => (
+                      <div key={tx.id} className="spending-category-row">
+                        <div>
+                          <p className="spending-category-name">
+                            {tx.payeeLabel ?? tx.description}
+                          </p>
+                          <p className="bank-meta">
+                            {formatDate(tx.bookedAt)} · {tx.accountName}
+                            {tx.categoryName ? ` · ${tx.categoryName}` : ""}
+                          </p>
+                        </div>
+                        <p className="spending-category-amount">{formatMoney(tx.amount)}</p>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => void assign(goal.id, tx.transactionId)}
+                        >
+                          Assign
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : null}
             </div>
           ))
         )}

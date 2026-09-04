@@ -10,15 +10,18 @@ import {
   Query,
 } from "@nestjs/common";
 import {
-  addGoalAmountSchema,
+  assignGoalTransactionSchema,
+  assignWealthTransactionSchema,
   copyBudgetSchema,
   debtOrderSchema,
   spendingPeriodQuerySchema,
+  upsertBillPayeeSchema,
   upsertBillSchema,
   upsertBudgetSchema,
   upsertGoalSchema,
   upsertHoldingSchema,
   upsertWealthItemSchema,
+  upsertWealthValuationSchema,
 } from "@poca/shared";
 import { parseOrThrow } from "../common/parse-or-throw";
 import { WealthService } from "./wealth.service";
@@ -111,6 +114,12 @@ export class WealthController {
     return this.wealth.deleteBill(id);
   }
 
+  @Post("bills/payees")
+  upsertBillPayee(@Body() body: unknown) {
+    const input = parseOrThrow(upsertBillPayeeSchema, body, "Bill payee body");
+    return this.wealth.upsertBillPayee(input);
+  }
+
   @Get("goals")
   listGoals() {
     return this.wealth.listGoals();
@@ -128,10 +137,27 @@ export class WealthController {
     return this.wealth.updateGoal(id, input);
   }
 
-  @Post("goals/:id/add")
-  addGoalAmount(@Param("id") id: string, @Body() body: unknown) {
-    const input = parseOrThrow(addGoalAmountSchema, body, "Add to goal body");
-    return this.wealth.addGoalAmount(id, input.amount);
+  @Get("goals/:id/candidates")
+  listGoalCandidates(@Param("id") id: string) {
+    return this.wealth.listGoalCandidates(id);
+  }
+
+  @Post("goals/:id/funding")
+  assignGoalTransaction(@Param("id") id: string, @Body() body: unknown) {
+    const input = parseOrThrow(
+      assignGoalTransactionSchema,
+      body,
+      "Assign goal transaction body",
+    );
+    return this.wealth.assignGoalTransaction(id, input.transactionId);
+  }
+
+  @Delete("goals/:id/funding/:transactionId")
+  unassignGoalTransaction(
+    @Param("id") id: string,
+    @Param("transactionId") transactionId: string,
+  ) {
+    return this.wealth.unassignGoalTransaction(id, transactionId);
   }
 
   @Delete("goals/:id")
@@ -174,6 +200,44 @@ export class WealthController {
   @Delete("items/:id")
   deleteItem(@Param("id") id: string) {
     return this.wealth.deleteWealthItem(id);
+  }
+
+  @Get("items/:id/series")
+  getItemSeries(@Param("id") id: string) {
+    return this.wealth.getWealthItemSeries(id);
+  }
+
+  @Get("items/:id/candidates")
+  listItemCandidates(@Param("id") id: string) {
+    return this.wealth.listWealthCandidates(id);
+  }
+
+  @Post("items/:id/ledger")
+  assignItemTransaction(@Param("id") id: string, @Body() body: unknown) {
+    const input = parseOrThrow(
+      assignWealthTransactionSchema,
+      body,
+      "Wealth ledger body",
+    );
+    return this.wealth.assignWealthTransaction(id, input.transactionId, input.role);
+  }
+
+  @Delete("items/:id/ledger/:transactionId")
+  unassignItemTransaction(
+    @Param("id") id: string,
+    @Param("transactionId") transactionId: string,
+  ) {
+    return this.wealth.unassignWealthTransaction(id, transactionId);
+  }
+
+  @Post("items/:id/valuations")
+  addItemValuation(@Param("id") id: string, @Body() body: unknown) {
+    const input = parseOrThrow(
+      upsertWealthValuationSchema,
+      body,
+      "Wealth valuation body",
+    );
+    return this.wealth.addWealthValuation(id, input);
   }
 
   @Get("debts")

@@ -63,6 +63,7 @@ export const createCategorySchema = z.object({
   kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).default("EXPENSE"),
   isBill: z.boolean().optional(),
   isEssential: z.boolean().optional(),
+  isVariable: z.boolean().optional(),
   billCadence: z.enum(["WEEKLY", "MONTHLY", "YEARLY"]).optional(),
 });
 
@@ -75,6 +76,7 @@ export const updateCategorySchema = z.object({
   kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).optional(),
   isBill: z.boolean().optional(),
   isEssential: z.boolean().optional(),
+  isVariable: z.boolean().optional(),
   billCadence: z.enum(["WEEKLY", "MONTHLY", "YEARLY"]).optional(),
 });
 
@@ -178,6 +180,7 @@ export type SpendingCategorySummary = {
   isSystem: boolean;
   isBill?: boolean;
   isEssential?: boolean;
+  isVariable?: boolean;
   kind: CategoryKind;
   totalSpent: number;
   transactionCount: number;
@@ -263,6 +266,8 @@ export type SpendingSummaryResponse = {
   transferCategories: SpendingCategorySummary[];
   reviewCategories: SpendingCategorySummary[];
   cached: boolean;
+  billsPaid: number;
+  flexSpent: number;
 };
 
 export type CategoryDetailResponse = {
@@ -274,6 +279,7 @@ export type CategoryDetailResponse = {
     isSystem: boolean;
     isBill?: boolean;
     isEssential?: boolean;
+    isVariable?: boolean;
     kind: CategoryKind;
   };
   range: SpendingPeriodKind;
@@ -299,8 +305,8 @@ export type TagSummaryResponse = {
 
 export const DEFAULT_CATEGORY_DEFINITIONS = [
   { name: "Restaurants", color: "#f97316", icon: "🍽️", kind: "EXPENSE" as const },
-  { name: "Groceries", color: "#22c55e", icon: "🛒", kind: "EXPENSE" as const },
-  { name: "Fuel", color: "#64748b", icon: "⛽", kind: "EXPENSE" as const },
+  { name: "Groceries", color: "#22c55e", icon: "🛒", kind: "EXPENSE" as const, isVariable: true, isEssential: true },
+  { name: "Fuel", color: "#64748b", icon: "⛽", kind: "EXPENSE" as const, isVariable: true, isEssential: true },
   { name: "Transport", color: "#3b82f6", icon: "🚌", kind: "EXPENSE" as const },
   { name: "Travel", color: "#0ea5e9", icon: "✈️", kind: "EXPENSE" as const },
   { name: "Entertainment", color: "#ec4899", icon: "🎬", kind: "EXPENSE" as const },

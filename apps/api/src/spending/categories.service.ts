@@ -38,6 +38,8 @@ export class CategoriesService {
           isBill: "isBill" in definition ? Boolean(definition.isBill) : false,
           isEssential:
             "isEssential" in definition ? Boolean(definition.isEssential) : false,
+          isVariable:
+            "isVariable" in definition ? Boolean(definition.isVariable) : false,
         },
         update: {},
       });
@@ -61,11 +63,14 @@ export class CategoriesService {
       kind?: "EXPENSE" | "INCOME" | "TRANSFER";
       isBill?: boolean;
       isEssential?: boolean;
+      isVariable?: boolean;
       billCadence?: "WEEKLY" | "MONTHLY" | "YEARLY";
     },
   ) {
     const name = input.name.trim();
     const isBill = input.kind === "INCOME" || input.kind === "TRANSFER" ? false : Boolean(input.isBill);
+    const isVariable =
+      input.kind === "INCOME" || input.kind === "TRANSFER" ? false : Boolean(input.isVariable);
 
     const created = await this.prisma.category.upsert({
       where: {
@@ -81,7 +86,8 @@ export class CategoriesService {
         icon: input.icon,
         kind: input.kind ?? "EXPENSE",
         isBill,
-        isEssential: isBill ? Boolean(input.isEssential) : false,
+        isEssential: Boolean(input.isEssential),
+        isVariable,
         billCadence: input.billCadence ?? "MONTHLY",
       },
       update: {
@@ -91,6 +97,7 @@ export class CategoriesService {
         ...(input.kind ? { kind: input.kind } : {}),
         ...(input.isBill !== undefined ? { isBill } : {}),
         ...(input.isEssential !== undefined ? { isEssential: input.isEssential } : {}),
+        ...(input.isVariable !== undefined ? { isVariable } : {}),
         ...(input.billCadence ? { billCadence: input.billCadence } : {}),
       },
     });
@@ -109,6 +116,7 @@ export class CategoriesService {
       kind?: "EXPENSE" | "INCOME" | "TRANSFER";
       isBill?: boolean;
       isEssential?: boolean;
+      isVariable?: boolean;
       billCadence?: "WEEKLY" | "MONTHLY" | "YEARLY";
     },
   ) {
@@ -147,6 +155,7 @@ export class CategoriesService {
         ...(input.kind ? { kind: input.kind } : {}),
         ...(input.isBill !== undefined ? { isBill: input.isBill } : {}),
         ...(input.isEssential !== undefined ? { isEssential: input.isEssential } : {}),
+        ...(input.isVariable !== undefined ? { isVariable: input.isVariable } : {}),
         ...(input.billCadence ? { billCadence: input.billCadence } : {}),
       },
     });

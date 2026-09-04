@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { WEALTH_CLASSES, WEALTH_SIDES } from "@poca/shared";
+import { LineChart } from "../../../../components/line-chart";
 import { apiFetch } from "../../../../lib/api";
-import { formatMoney } from "../../../../lib/format";
+import { formatDate, formatMoney } from "../../../../lib/format";
 
 type Item = {
   id: string;
@@ -11,8 +12,24 @@ type Item = {
   side: "ASSET" | "LIABILITY";
   class: string;
   currentValue: number;
+  estimated?: boolean;
+  unverified?: boolean;
+  accountId: string | null;
+  accountName: string | null;
   interestRate: number | null;
   minimumPayment: number | null;
+  depreciationPercentYearly: number | null;
+  notes: string | null;
+  trail: Array<{
+    transactionId: string;
+    role: string;
+    amount: number;
+    bookedAt: string;
+    description: string;
+    payeeLabel: string | null;
+  }>;
+  valuations: Array<{ asOf: string; value: number; source: string }>;
+  series: Array<{ date: string; value: number }>;
 };
 
 type NetWorth = {
@@ -23,6 +40,22 @@ type NetWorth = {
   items: Item[];
 };
 
+type AccountOption = {
+  id: string;
+  name: string;
+  currentBalance: number;
+  accountType: string | null;
+};
+
+type Candidate = {
+  transactionId: string;
+  amount: number;
+  bookedAt: string;
+  description: string;
+  payeeLabel: string | null;
+  accountName: string;
+};
+
 export function NetWorthClient() {
   const [data, setData] = useState<NetWorth | null>(null);
   const [snapshots, setSnapshots] = useState<
@@ -31,23 +64,44 @@ export function NetWorthClient() {
   const [debts, setDebts] = useState<
     Array<{ id: string; name: string; balance: number; interestRate: number | null }>
   >([]);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [order, setOrder] = useState<"avalanche" | "snowball">("avalanche");
   const [name, setName] = useState("");
   const [side, setSide] = useState<"ASSET" | "LIABILITY">("ASSET");
   const [cls, setCls] = useState("PROPERTY");
   const [value, setValue] = useState("");
   const [rate, setRate] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [dep, setDep] = useState("");
+  const [openingAsOf, setOpeningAsOf] = useState(
+    () => new Date().toISOString().slice(0, 10),
+  );
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editValue, setEditValue] = useState("");
+  const [editRate, setEditRate] = useState("");
+  const [editDep, setEditDep] = useState("");
+  const [editAccountId, setEditAccountId] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [valuationAmount, setValuationAmount] = useState("");
+  const [valuationPercent, setValuationPercent] = useState("");
+  const [ledgerRole, setLedgerRole] = useState<"PURCHASE" | "OPENING" | "REPAYMENT" | "INCREASE">(
+    "REPAYMENT",
+  );
 
   async function reload() {
-    const [worth, snaps, debtList] = await Promise.all([
+    const [worth, snaps, debtList, accountList] = await Promise.all([
       apiFetch<NetWorth>("/wealth/net-worth"),
       apiFetch<Array<{ asOf: string; netWorth: number }>>("/wealth/net-worth/snapshots"),
       apiFetch<typeof debts>(`/wealth/debts?order=${order}`),
+      apiFetch<AccountOption[]>("/wealth/accounts"),
     ]);
     setData(worth);
     setSnapshots(snaps);
     setDebts(debtList);
+    setAccounts(accountList);
   }
 
   useEffect(() => {
@@ -66,18 +120,69 @@ export function NetWorthClient() {
           name,
           side,
           class: cls,
-          currentValue: Number(value),
+          currentValue: value === "" ? 0 : Number(value),
+          accountId: accountId || null,
           interestRate: rate === "" ? null : Number(rate) / 100,
+          depreciationPercentYearly: dep === "" ? null : Number(dep) / 100,
+          openingAsOf: openingAsOf || new Date().toISOString().slice(0, 10),
         }),
       });
       setName("");
       setValue("");
       setRate("");
+      setDep("");
+      setAccountId("");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save item");
     }
   }
+
+  function startEdit(item: Item) {
+    setEditingId(item.id);
+    setEditName(item.name);
+    setEditValue(String(item.currentValue));
+    setEditRate(item.interestRate != null ? String(item.interestRate * 100) : "");
+    setEditDep(
+      item.depreciationPercentYearly != null
+        ? String(item.depreciationPercentYearly * 100)
+        : "",
+    );
+    setEditAccountId(item.accountId ?? "");
+    setEditNotes(item.notes ?? "");
+    setLedgerRole(item.side === "LIABILITY" ? "REPAYMENT" : "PURCHASE");
+    void apiFetch<Candidate[]>(`/wealth/items/${item.id}/candidates`)
+      .then(setCandidates)
+      .catch(() => setCandidates([]));
+  }
+
+  async function saveEdit(item: Item) {
+    setError(null);
+    try {
+      await apiFetch(`/wealth/items/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName,
+          side: item.side,
+          class: item.class,
+          currentValue: Number(editValue),
+          accountId: editAccountId || null,
+          interestRate: editRate === "" ? null : Number(editRate) / 100,
+          depreciationPercentYearly: editDep === "" ? null : Number(editDep) / 100,
+          notes: editNotes || null,
+        }),
+      });
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update item");
+    }
+  }
+
+  const editing = data?.items.find((item) => item.id === editingId) ?? null;
+  const loanAccounts = accounts.filter(
+    (account) => (account.accountType ?? "").toUpperCase() === "LOAN",
+  );
 
   return (
     <div>
@@ -100,17 +205,13 @@ export function NetWorthClient() {
           </div>
         </div>
       ) : null}
-      <div className="tag-chip-row" style={{ marginBottom: "1rem" }}>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => void apiFetch("/wealth/net-worth/snapshot", { method: "POST" }).then(reload)}
-        >
-          Save today’s snapshot
-        </button>
-      </div>
       <div className="card" style={{ marginBottom: "1rem" }}>
         <h2 className="section-title">Add asset or liability</h2>
+        <p className="bank-meta" style={{ marginBottom: "0.75rem", maxWidth: "62ch" }}>
+          Opening snapshot is allowed if the purchase is not in Póca. Link a BOI
+          loan account when it appears on reconnect; otherwise enter APR and
+          attach the €205 transfers as repayments.
+        </p>
         <div className="tag-chip-row">
           <input
             className="login-input"
@@ -147,18 +248,47 @@ export function NetWorthClient() {
           <input
             className="login-input"
             type="number"
-            placeholder="Value €"
+            placeholder="Opening €"
             value={value}
             onChange={(event) => setValue(event.target.value)}
+          />
+          <input
+            className="login-input"
+            type="date"
+            value={openingAsOf}
+            onChange={(event) => setOpeningAsOf(event.target.value)}
+            aria-label="Opening date"
           />
           {side === "LIABILITY" ? (
             <input
               className="login-input"
               type="number"
-              placeholder="Rate %"
+              placeholder="APR %"
               value={rate}
               onChange={(event) => setRate(event.target.value)}
             />
+          ) : (
+            <input
+              className="login-input"
+              type="number"
+              placeholder="Car dep. % / year"
+              value={dep}
+              onChange={(event) => setDep(event.target.value)}
+            />
+          )}
+          {loanAccounts.length > 0 ? (
+            <select
+              className="login-input"
+              value={accountId}
+              onChange={(event) => setAccountId(event.target.value)}
+            >
+              <option value="">No linked loan account</option>
+              {loanAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} ({formatMoney(account.currentBalance)})
+                </option>
+              ))}
+            </select>
           ) : null}
           <button type="button" className="btn btn-primary" onClick={() => void create()}>
             Add
@@ -167,24 +297,221 @@ export function NetWorthClient() {
       </div>
       <div className="spending-category-list">
         {(data?.items ?? []).map((item) => (
-          <div key={item.id} className="spending-category-row">
-            <div>
-              <p className="spending-category-name">{item.name}</p>
-              <p className="bank-meta">
-                {item.side.toLowerCase()} · {item.class.toLowerCase().replace("_", " ")}
-                {item.interestRate != null ? ` · ${(item.interestRate * 100).toFixed(1)}%` : ""}
-              </p>
+          <div key={item.id} className="card" style={{ marginBottom: "0.75rem" }}>
+            <div className="spending-category-row" style={{ border: "none", padding: 0 }}>
+              <div>
+                <p className="spending-category-name">{item.name}</p>
+                <p className="bank-meta">
+                  {item.side.toLowerCase()} · {item.class.toLowerCase().replace("_", " ")}
+                  {item.interestRate != null ? ` · ${(item.interestRate * 100).toFixed(1)}% APR` : ""}
+                  {item.estimated ? " · estimated" : ""}
+                  {item.unverified ? " · add opening snapshot or transactions" : ""}
+                  {item.accountName ? ` · ${item.accountName}` : ""}
+                </p>
+              </div>
+              <p className="spending-category-amount">{formatMoney(item.currentValue)}</p>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() =>
+                  editingId === item.id ? setEditingId(null) : startEdit(item)
+                }
+              >
+                {editingId === item.id ? "Close" : "Edit"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() =>
+                  void apiFetch(`/wealth/items/${item.id}`, { method: "DELETE" }).then(reload)
+                }
+              >
+                Remove
+              </button>
             </div>
-            <p className="spending-category-amount">{formatMoney(item.currentValue)}</p>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() =>
-                void apiFetch(`/wealth/items/${item.id}`, { method: "DELETE" }).then(reload)
-              }
-            >
-              Remove
-            </button>
+            {item.series.length > 1 ? (
+              <div style={{ marginTop: "0.75rem" }}>
+                <LineChart
+                  series={[
+                    {
+                      id: item.id,
+                      label: item.name,
+                      color: item.side === "LIABILITY" ? "var(--expense)" : "var(--accent)",
+                      points: item.series,
+                    },
+                  ]}
+                />
+              </div>
+            ) : null}
+            {editing && editing.id === item.id ? (
+              <div style={{ marginTop: "0.75rem" }}>
+                <div className="tag-chip-row">
+                  <input
+                    className="login-input"
+                    value={editName}
+                    onChange={(event) => setEditName(event.target.value)}
+                  />
+                  <input
+                    className="login-input"
+                    type="number"
+                    value={editValue}
+                    onChange={(event) => setEditValue(event.target.value)}
+                  />
+                  {item.side === "LIABILITY" ? (
+                    <input
+                      className="login-input"
+                      type="number"
+                      placeholder="APR %"
+                      value={editRate}
+                      onChange={(event) => setEditRate(event.target.value)}
+                    />
+                  ) : (
+                    <input
+                      className="login-input"
+                      type="number"
+                      placeholder="Dep % / year"
+                      value={editDep}
+                      onChange={(event) => setEditDep(event.target.value)}
+                    />
+                  )}
+                  <select
+                    className="login-input"
+                    value={editAccountId}
+                    onChange={(event) => setEditAccountId(event.target.value)}
+                  >
+                    <option value="">No linked account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void saveEdit(item)}
+                  >
+                    Save
+                  </button>
+                </div>
+                {item.side === "ASSET" ? (
+                  <div className="tag-chip-row" style={{ marginTop: "0.5rem" }}>
+                    <input
+                      className="login-input"
+                      type="number"
+                      placeholder="€ change"
+                      value={valuationAmount}
+                      onChange={(event) => setValuationAmount(event.target.value)}
+                    />
+                    <input
+                      className="login-input"
+                      type="number"
+                      placeholder="% change"
+                      value={valuationPercent}
+                      onChange={(event) => setValuationPercent(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() =>
+                        void apiFetch(`/wealth/items/${item.id}/valuations`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            asOf: new Date().toISOString().slice(0, 10),
+                            amountChange:
+                              valuationAmount === "" ? undefined : Number(valuationAmount),
+                            percentChange:
+                              valuationPercent === "" ? undefined : Number(valuationPercent),
+                          }),
+                        }).then(() => {
+                          setValuationAmount("");
+                          setValuationPercent("");
+                          return reload();
+                        })
+                      }
+                    >
+                      Record valuation
+                    </button>
+                  </div>
+                ) : null}
+                <h3 className="section-title" style={{ marginTop: "1rem", fontSize: "0.95rem" }}>
+                  Proof transactions
+                </h3>
+                {item.trail.length === 0 ? (
+                  <p className="bank-meta">Nothing attached yet.</p>
+                ) : (
+                  item.trail.map((tx) => (
+                    <div key={tx.transactionId} className="spending-category-row">
+                      <div>
+                        <p className="spending-category-name">
+                          {tx.payeeLabel ?? tx.description}
+                        </p>
+                        <p className="bank-meta">
+                          {formatDate(tx.bookedAt)} · {tx.role.toLowerCase()}
+                        </p>
+                      </div>
+                      <p className="spending-category-amount">{formatMoney(tx.amount)}</p>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() =>
+                          void apiFetch(
+                            `/wealth/items/${item.id}/ledger/${tx.transactionId}`,
+                            { method: "DELETE" },
+                          ).then(reload)
+                        }
+                      >
+                        Detach
+                      </button>
+                    </div>
+                  ))
+                )}
+                <div className="tag-chip-row" style={{ marginTop: "0.5rem" }}>
+                  <select
+                    className="login-input"
+                    value={ledgerRole}
+                    onChange={(event) =>
+                      setLedgerRole(event.target.value as typeof ledgerRole)
+                    }
+                  >
+                    <option value="PURCHASE">Purchase</option>
+                    <option value="OPENING">Opening inflow</option>
+                    <option value="REPAYMENT">Repayment</option>
+                    <option value="INCREASE">Increase</option>
+                  </select>
+                </div>
+                {candidates.map((tx) => (
+                  <div key={tx.transactionId} className="spending-category-row">
+                    <div>
+                      <p className="spending-category-name">
+                        {tx.payeeLabel ?? tx.description}
+                      </p>
+                      <p className="bank-meta">
+                        {formatDate(tx.bookedAt)} · {tx.accountName}
+                      </p>
+                    </div>
+                    <p className="spending-category-amount">{formatMoney(tx.amount)}</p>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() =>
+                        void apiFetch(`/wealth/items/${item.id}/ledger`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            transactionId: tx.transactionId,
+                            role: ledgerRole,
+                          }),
+                        }).then(reload)
+                      }
+                    >
+                      Attach
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ))}
       </div>

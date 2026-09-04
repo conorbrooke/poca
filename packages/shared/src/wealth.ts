@@ -142,33 +142,26 @@ export const upsertBillSchema = z.object({
 
 export type UpsertBillInput = z.infer<typeof upsertBillSchema>;
 
-export const upsertGoalSchema = z.object({
-  name: z.string().min(1).max(80),
-  kind: z.enum(SAVINGS_GOAL_KINDS).default("GENERAL"),
-  targetAmount: z.number().positive(),
-  targetDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
-  currentAmount: z.number().nonnegative().default(0),
-  accountId: z.string().min(1).nullable().optional(),
-  notes: z.string().max(400).nullable().optional(),
+export const upsertBillPayeeSchema = z.object({
+  categoryId: z.string().min(1),
+  payeeLabel: z.string().min(1).max(120),
+  status: z.enum(["CONFIRMED", "IGNORED"]).default("CONFIRMED"),
 });
 
-export type UpsertGoalInput = z.infer<typeof upsertGoalSchema>;
+export type UpsertBillPayeeInput = z.infer<typeof upsertBillPayeeSchema>;
 
-export const addGoalAmountSchema = z.object({
-  amount: z.number().positive(),
-});
-
-export type AddGoalAmountInput = z.infer<typeof addGoalAmountSchema>;
+export const WEALTH_LEDGER_ROLES = [
+  "PURCHASE",
+  "OPENING",
+  "REPAYMENT",
+  "INCREASE",
+] as const;
 
 export const upsertWealthItemSchema = z.object({
   name: z.string().min(1).max(80),
   side: z.enum(WEALTH_SIDES),
   class: z.enum(WEALTH_CLASSES),
-  currentValue: z.number().nonnegative(),
+  currentValue: z.number().nonnegative().optional(),
   accountId: z.string().min(1).nullable().optional(),
   interestRate: z.number().min(0).max(1).nullable().optional(),
   minimumPayment: z.number().nonnegative().nullable().optional(),
@@ -178,9 +171,57 @@ export const upsertWealthItemSchema = z.object({
   employerContributionMonthly: z.number().nonnegative().nullable().optional(),
   stateContributionMonthly: z.number().nonnegative().nullable().optional(),
   notes: z.string().max(400).nullable().optional(),
+  depreciationPercentYearly: z.number().min(0).max(1).nullable().optional(),
+  openingAsOf: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
 });
 
 export type UpsertWealthItemInput = z.infer<typeof upsertWealthItemSchema>;
+
+export const assignWealthTransactionSchema = z.object({
+  transactionId: z.string().min(1),
+  role: z.enum(WEALTH_LEDGER_ROLES),
+});
+
+export type AssignWealthTransactionInput = z.infer<
+  typeof assignWealthTransactionSchema
+>;
+
+export const upsertWealthValuationSchema = z.object({
+  asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  value: z.number().nonnegative().optional(),
+  percentChange: z.number().optional(),
+  amountChange: z.number().optional(),
+  note: z.string().max(200).nullable().optional(),
+});
+
+export type UpsertWealthValuationInput = z.infer<
+  typeof upsertWealthValuationSchema
+>;
+
+export const upsertGoalSchema = z.object({
+  name: z.string().min(1).max(80),
+  kind: z.enum(SAVINGS_GOAL_KINDS).default("GENERAL"),
+  targetAmount: z.number().positive(),
+  targetDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  accountId: z.string().min(1).nullable().optional(),
+  notes: z.string().max(400).nullable().optional(),
+});
+
+export type UpsertGoalInput = z.infer<typeof upsertGoalSchema>;
+
+export const assignGoalTransactionSchema = z.object({
+  transactionId: z.string().min(1),
+});
+
+export type AssignGoalTransactionInput = z.infer<typeof assignGoalTransactionSchema>;
 
 export const upsertHoldingSchema = z.object({
   ticker: z.string().min(1).max(16),

@@ -57,6 +57,7 @@ model User {
   accountTransfers AccountTransfer[]
   monthlyBudgets   MonthlyBudget[]
   recurringBills   RecurringBill[]
+  confirmedBillPayees ConfirmedBillPayee[]
   savingsGoals     SavingsGoal[]
   wealthItems      WealthItem[]
   holdings         Holding[]
@@ -145,6 +146,7 @@ model Category {
   isSystem  Boolean      @default(false)
   isBill      Boolean      @default(false)
   isEssential Boolean      @default(false)
+  isVariable  Boolean      @default(false)
   billCadence BillCadence  @default(MONTHLY)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -157,6 +159,7 @@ model Category {
   periodStats  CategoryPeriodStat[]
   budgetLines  BudgetLine[]
   recurringBills RecurringBill[]
+  confirmedBillPayees ConfirmedBillPayee[]
 
   @@unique([userId, name])
   @@index([userId])
@@ -273,6 +276,8 @@ model Transaction {
   receipts            TransactionReceipt[]
   transferOut         AccountTransfer? @relation("TransferOut")
   transferIn          AccountTransfer? @relation("TransferIn")
+  goalFunding         GoalFunding?
+  wealthItemLedger    WealthItemLedger?
 
   @@unique([accountId, externalId])
   @@index([accountId])
@@ -376,6 +381,26 @@ enum BillCadence {
   YEARLY
 }
 
+enum BillPayeeStatus {
+  CONFIRMED
+  IGNORED
+}
+
+enum WealthLedgerRole {
+  PURCHASE
+  OPENING
+  REPAYMENT
+  INCREASE
+}
+
+enum WealthValuationSource {
+  TRANSACTION
+  OPENING
+  MANUAL_PERCENT
+  MANUAL_AMOUNT
+  DEPRECIATION
+}
+
 enum SavingsGoalKind {
   EMERGENCY
   HOUSE
@@ -459,6 +484,23 @@ model RecurringBill {
   @@index([categoryId])
 }
 
+model ConfirmedBillPayee {
+  id         String          @id @default(cuid())
+  userId     String
+  categoryId String
+  payeeLabel String
+  status     BillPayeeStatus @default(CONFIRMED)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, payeeLabel])
+  @@index([userId])
+  @@index([categoryId])
+}
+
 model SavingsGoal {
   id            String          @id @default(cuid())
   userId        String
@@ -472,11 +514,25 @@ model SavingsGoal {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account  Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  fundings GoalFunding[]
 
   @@index([userId])
   @@index([accountId])
+}
+
+model GoalFunding {
+  id            String   @id @default(cuid())
+  goalId        String
+  transactionId String   @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  goal        SavingsGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
 }
 
 model WealthItem {
@@ -495,14 +551,47 @@ model WealthItem {
   employerContributionMonthly Decimal? @db.Decimal(14, 2)
   stateContributionMonthly    Decimal? @db.Decimal(14, 2)
   notes                String?
+  depreciationPercentYearly Decimal? @db.Decimal(7, 4)
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account    Account?              @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  ledgers    WealthItemLedger[]
+  valuations WealthItemValuation[]
 
   @@index([userId])
   @@index([accountId])
+}
+
+model WealthItemLedger {
+  id            String           @id @default(cuid())
+  wealthItemId  String
+  transactionId String           @unique
+  role          WealthLedgerRole
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  wealthItem  WealthItem  @relation(fields: [wealthItemId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([wealthItemId])
+}
+
+model WealthItemValuation {
+  id           String                 @id @default(cuid())
+  wealthItemId String
+  asOf         DateTime               @db.Date
+  value        Decimal                @db.Decimal(14, 2)
+  source       WealthValuationSource
+  note         String?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  wealthItem WealthItem @relation(fields: [wealthItemId], references: [id], onDelete: Cascade)
+
+  @@unique([wealthItemId, asOf, source])
+  @@index([wealthItemId, asOf])
 }
 
 model Holding {

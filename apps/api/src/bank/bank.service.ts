@@ -498,6 +498,36 @@ export class BankService {
     };
   }
 
+  async reconnectConnection(connectionId: string, redirectUrl: string) {
+    const user = await this.ensureDemoUser();
+    const connection = await this.prisma.bankConnection.findFirst({
+      where: { id: connectionId, userId: user.id },
+    });
+    if (!connection) {
+      throw new NotFoundException("Bank connection not found");
+    }
+
+    const link = await this.createAuthLink(
+      connection.institutionId,
+      redirectUrl,
+    );
+
+    await this.prisma.bankConnection.update({
+      where: { id: connectionId },
+      data: {
+        requisitionId: link.requisitionId,
+        status: BankConnectionStatus.PENDING,
+        lastError: null,
+      },
+    });
+
+    return {
+      connectionId: connection.id,
+      state: link.referenceId,
+      link: link.link,
+    };
+  }
+
   async getConnection(connectionId: string) {
     const connection = await this.prisma.bankConnection.findUnique({
       where: { id: connectionId },

@@ -102,9 +102,19 @@ export function SpendingClient() {
               {formatMoney(data?.totalSpent ?? 0)}
             </h2>
             <p className="bank-meta">
-              {data?.transactionCount ?? 0} expense transactions · {periodLabel}
+              All expenses · {data?.transactionCount ?? 0} transactions · {periodLabel}
               {" · EUR at today's rates"}
             </p>
+            {data && data.flow !== "in" ? (
+              <p className="bank-meta" style={{ marginTop: "0.35rem" }}>
+                Flex {formatMoney(data.flexSpent ?? data.totalSpent)}
+                {" · bills paid "}
+                {formatMoney(data.billsPaid ?? 0)}
+                {period.kind !== "month"
+                  ? " (paid bills use this calendar month)"
+                  : ""}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -243,6 +253,11 @@ function CategoryRow({
             {category.isBill ? (
               <span className="transfer-link-badge" style={{ marginLeft: "0.45rem" }}>
                 Bill
+              </span>
+            ) : null}
+            {category.isVariable ? (
+              <span className="transfer-link-badge" style={{ marginLeft: "0.45rem" }}>
+                Variable
               </span>
             ) : null}
           </p>
