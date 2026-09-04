@@ -32,6 +32,13 @@ import {
   mergeStats,
   syncDateFrom,
 } from "./stats";
+import {
+  bookingShiftWindow,
+  isBookingDateShiftDuplicate,
+  isFallbackSyntheticId,
+  preferDescription,
+  preferExternalId,
+} from "./transaction-duplicates";
 
 type TransactionCursor = {
   bookedAt: string;
@@ -636,6 +643,8 @@ export class BankService {
             syncedTransactionIds.push(saved.id);
           }
         }
+
+        await this.collapseAccountDuplicates(account.id);
       }
 
       if (syncedTransactionIds.length > 0) {
@@ -646,6 +655,7 @@ export class BankService {
         await this.transfersService.suggestTransfers(user.id, syncedTransactionIds);
       }
 
+      await this.categoriesService.invalidateSpendingCache(user.id);
       await this.recomputeConnectionStats(bankConnectionId);
 
       await this.prisma.bankConnection.update({
@@ -830,115 +840,93 @@ export class BankService {
     return stats;
   }
 
-  private isBankHexId(externalId: string) {
-    return /^[0-9A-F]{32}$/i.test(externalId);
-  }
+  private async collapseAccountDuplicates(accountId: string) {
+    const rows = await this.prisma.transaction.findMany({
+      where: { accountId },
+      select: {
+        id: true,
+        externalId: true,
+        bookedAt: true,
+        amount: true,
+        description: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
-  /** Fallback IDs we generate when the bank omits entry_reference / transaction_id. */
-  private isFallbackSyntheticId(externalId: string) {
-    return (
-      this.isLegacySyntheticId(externalId) ||
-      /^-?\d+(\.\d+)?-/.test(externalId)
-    );
-  }
+    const removed = new Set<string>();
+    for (const row of rows) {
+      if (removed.has(row.id) || !row.externalId) continue;
+      const incoming: ExternalTransaction = {
+        externalId: row.externalId,
+        amount: Number(row.amount.toString()),
+        currency: "EUR",
+        description: row.description,
+        bookedAt: row.bookedAt,
+      };
+      const duplicate = rows.find(
+        (candidate) =>
+          candidate.id !== row.id &&
+          !removed.has(candidate.id) &&
+          isBookingDateShiftDuplicate(incoming, candidate),
+      );
+      if (!duplicate) continue;
 
-  private isLegacySyntheticId(externalId: string) {
-    return /^\d{4}-\d{2}-\d{2}-/.test(externalId);
-  }
-
-  private preferExternalId(next: string, current: string | null) {
-    if (!current) return next;
-    const nextBank = this.isBankHexId(next);
-    const currentBank = this.isBankHexId(current);
-    if (nextBank && !currentBank) return next;
-    if (!nextBank && currentBank) return current;
-    const nextLegacy = this.isLegacySyntheticId(next);
-    const currentLegacy = this.isLegacySyntheticId(current);
-    if (currentLegacy && !nextLegacy) return next;
-    if (!currentLegacy && nextLegacy) return current;
-    return next;
-  }
-
-  /**
-   * Detect the same bank row reappearing with a shifted booking date (pending → posted).
-   * Intentionally narrow: never merges two bank hex IDs or purchases on different days.
-   */
-  private isBookingDateShiftDuplicate(
-    incoming: ExternalTransaction,
-    existing: {
-      externalId: string | null;
-      bookedAt: Date;
-      amount: { toString(): string };
-      description: string;
-    },
-  ) {
-    if (existing.externalId === incoming.externalId) return false;
-
-    if (
-      existing.externalId &&
-      this.isBankHexId(existing.externalId) &&
-      this.isBankHexId(incoming.externalId)
-    ) {
-      return false;
+      const keepRow =
+        row.externalId && !isFallbackSyntheticId(row.externalId)
+          ? row
+          : duplicate.externalId && !isFallbackSyntheticId(duplicate.externalId)
+            ? duplicate
+            : row;
+      const dropRow = keepRow.id === row.id ? duplicate : row;
+      const nextExternalId = preferExternalId(
+        keepRow.externalId ?? row.externalId,
+        dropRow.externalId,
+      );
+      await this.prisma.transaction.update({
+        where: { id: dropRow.id },
+        data: { externalId: null },
+      });
+      await this.prisma.transaction.update({
+        where: { id: keepRow.id },
+        data: {
+          externalId: nextExternalId,
+          description: preferDescription(row.description, duplicate.description),
+        },
+      });
+      await this.prisma.transaction.delete({ where: { id: dropRow.id } });
+      removed.add(dropRow.id);
     }
-
-    if (existing.description !== incoming.description) return false;
-    if (Number(existing.amount.toString()) !== incoming.amount) return false;
-
-    const incomingDay = Math.floor(incoming.bookedAt.getTime() / 86_400_000);
-    const existingDay = Math.floor(existing.bookedAt.getTime() / 86_400_000);
-    if (Math.abs(incomingDay - existingDay) > 2) return false;
-
-    const incomingSynthetic = this.isFallbackSyntheticId(incoming.externalId);
-    const existingSynthetic = existing.externalId
-      ? this.isFallbackSyntheticId(existing.externalId)
-      : false;
-
-    return incomingSynthetic || existingSynthetic;
-  }
-
-  private bookingShiftWindow(bookedAt: Date) {
-    const start = new Date(bookedAt);
-    start.setDate(start.getDate() - 2);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(bookedAt);
-    end.setDate(end.getDate() + 2);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
   }
 
   private async upsertSyncedTransaction(
     accountId: string,
     tx: ExternalTransaction,
   ) {
-    const { start, end } = this.bookingShiftWindow(tx.bookedAt);
+    const { start, end } = bookingShiftWindow(tx.bookedAt);
     const candidates = await this.prisma.transaction.findMany({
       where: {
         accountId,
         amount: tx.amount,
-        description: tx.description,
         bookedAt: { gte: start, lte: end },
         NOT: { externalId: tx.externalId },
       },
       orderBy: [{ bookedAt: "desc" }, { createdAt: "asc" }],
-      take: 5,
+      take: 8,
     });
 
     const duplicate = candidates.find((row) =>
-      this.isBookingDateShiftDuplicate(tx, row),
+      isBookingDateShiftDuplicate(tx, row),
     );
 
     if (duplicate) {
       const updated = await this.prisma.transaction.update({
         where: { id: duplicate.id },
         data: {
-          externalId: this.preferExternalId(
-            tx.externalId,
-            duplicate.externalId,
-          ),
+          externalId: preferExternalId(tx.externalId, duplicate.externalId),
           amount: tx.amount,
           currency: tx.currency,
-          description: tx.description,
+          description: preferDescription(tx.description, duplicate.description),
           merchant: tx.merchant,
           bookedAt: tx.bookedAt,
         },
