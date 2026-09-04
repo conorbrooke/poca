@@ -133,10 +133,39 @@ describe("wealth math", () => {
     ).toBe(false);
     expect(
       billPayeeOnChecklist({
+        cadence: "YEARLY",
+        lastMonthTotal: 0,
+        lastOccurrenceMonth: 3,
+        focusMonth: 8,
+        thisMonthSpend: 120,
+      }),
+    ).toBe(true);
+    expect(
+      billPayeeOnChecklist({
         cadence: "MONTHLY",
         lastMonthTotal: 205,
         lastOccurrenceMonth: 7,
         focusMonth: 8,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps confirmed monthly payees on the list after a skip or first month", () => {
+    expect(
+      billPayeeOnChecklist({
+        cadence: "MONTHLY",
+        lastMonthTotal: 0,
+        lastOccurrenceMonth: 7,
+        focusMonth: 9,
+      }),
+    ).toBe(true);
+    expect(
+      billPayeeOnChecklist({
+        cadence: "MONTHLY",
+        lastMonthTotal: 0,
+        lastOccurrenceMonth: null,
+        focusMonth: 9,
+        thisMonthSpend: 15.99,
       }),
     ).toBe(true);
   });

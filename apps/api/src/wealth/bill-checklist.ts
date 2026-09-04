@@ -364,6 +364,7 @@ function toPayeeRow(input: {
       ? lastOccurrence.lastDate.getMonth() + 1
       : null,
     focusMonth: input.month,
+    thisMonthSpend,
   });
 
   let status: BillPayeeStatusLabel = "needs_confirm";
@@ -388,14 +389,16 @@ function toPayeeRow(input: {
     thisMonthSpend,
     thisMonthCount: thisMonth?.count ?? 0,
     expected,
-    lastPayDate: lastOccurrence
-      ? formatDateOnly(lastOccurrence.lastDate)
-      : null,
+    lastPayDate: thisMonth
+      ? formatDateOnly(thisMonth.lastDate)
+      : lastOccurrence
+        ? formatDateOnly(lastOccurrence.lastDate)
+        : null,
     lastMonthTotal: roundCents(lastMonth?.total ?? 0),
     likelyPayDate:
-      lastOccurrence && onChecklist
+      lastMonth && onChecklist
         ? likelyPayDateThisMonth(
-            lastOccurrence.lastDate,
+            lastMonth.lastDate,
             input.year,
             input.month,
           )

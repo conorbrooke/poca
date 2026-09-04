@@ -1,6 +1,8 @@
 import type { ExternalTransaction } from "@poca/bank-connect";
 
 const PAYMENT_TYPE_SUFFIX = /(?:\s+(?:SO|DD|ST|CR))+$/i;
+const POS_OR_ATM_PREFIX = /^(?:POSC?|ATM)\s*/i;
+const CARD_DATE_PREFIX = /^\d{1,2}[A-Z]{3}\s+/i;
 
 export function isBankHexId(externalId: string) {
   return /^[0-9A-F]{16,64}$/i.test(externalId);
@@ -16,13 +18,11 @@ export function isFallbackSyntheticId(externalId: string) {
 }
 
 export function normalizeBankDescription(description: string) {
-  return description
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(PAYMENT_TYPE_SUFFIX, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
+  let value = description.replace(/\s+/g, " ").trim().toUpperCase();
+  value = value.replace(POS_OR_ATM_PREFIX, "").trim();
+  value = value.replace(CARD_DATE_PREFIX, "").trim();
+  value = value.replace(PAYMENT_TYPE_SUFFIX, "").trim();
+  return value.replace(/\s+/g, " ");
 }
 
 export function descriptionsEquivalent(left: string, right: string) {
@@ -47,6 +47,10 @@ export function preferDescription(left: string, right: string) {
   const rightHasSuffix = PAYMENT_TYPE_SUFFIX.test(right.trim());
   if (leftHasSuffix && !rightHasSuffix) return left;
   if (!leftHasSuffix && rightHasSuffix) return right;
+  const leftHasPos = /^(?:POSC?|ATM)/i.test(left.trim());
+  const rightHasPos = /^(?:POSC?|ATM)/i.test(right.trim());
+  if (leftHasPos && !rightHasPos) return left;
+  if (!leftHasPos && rightHasPos) return right;
   return left.length >= right.length ? left : right;
 }
 
@@ -59,7 +63,8 @@ type StoredTx = {
 
 /**
  * Detect the same bank row reappearing with a shifted booking date (pending → posted)
- * or a standing-order remittance variant (`TO A/C 123 SO` vs `TO A/C 123`).
+ * or a remittance variant (`TO A/C 123 SO` vs `TO A/C 123`,
+ * `POS01SEP PLAYSTATION` vs `01SEP PLAYSTATION`).
  * Never merges two bank hex IDs.
  */
 export function isBookingDateShiftDuplicate(

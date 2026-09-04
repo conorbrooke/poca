@@ -92,3 +92,38 @@ describe("standing-order remittance variants", () => {
     );
   });
 });
+
+describe("POS remittance variants", () => {
+  it("treats POS01SEP and 01SEP as the same card payment", () => {
+    expect(normalizeBankDescription("POS01SEP PLAYSTATION")).toBe("PLAYSTATION");
+    expect(normalizeBankDescription("01SEP PLAYSTATION")).toBe("PLAYSTATION");
+    expect(
+      descriptionsEquivalent("POS01SEP PLAYSTATION", "01SEP PLAYSTATION"),
+    ).toBe(true);
+  });
+
+  it("merges a bank hex POS row with a synthetic date-prefix row", () => {
+    expect(
+      isBookingDateShiftDuplicate(
+        tx({
+          externalId: "7A2016FC0B854059762196473BFB20",
+          description: "POS01SEP PLAYSTATION",
+          amount: -15.99,
+          bookedAt: new Date("2026-09-02T00:00:00.000Z"),
+        }),
+        {
+          externalId: "-15.99-01SEP PLAYSTATION-2026-09-02",
+          bookedAt: new Date("2026-09-02T00:00:00.000Z"),
+          amount: { toString: () => "-15.99" },
+          description: "01SEP PLAYSTATION",
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("prefers the POS remittance text", () => {
+    expect(preferDescription("01SEP PLAYSTATION", "POS01SEP PLAYSTATION")).toBe(
+      "POS01SEP PLAYSTATION",
+    );
+  });
+});

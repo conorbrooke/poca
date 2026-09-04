@@ -243,8 +243,9 @@ export function BillsClient() {
         <h2 className="section-title">Recurring bills</h2>
         <p className="bank-meta" style={{ maxWidth: "62ch" }}>
           Paid or not paid this calendar month. Expected is the median of the last
-          three payments for that payee. No euro still-due figure — unmark or
-          ignore a payee to drop it from the list.
+          three payments for that payee. Confirmed monthly payees stay on the list
+          after a skipped month, and in their first month. Confirm a new payee to
+          put it here. Yearly bills only in the month they hit.
         </p>
         {data?.calendarNote ? (
           <p className="bank-meta" style={{ marginTop: "0.5rem" }}>
@@ -316,8 +317,9 @@ export function BillsClient() {
         <div className="card" style={{ marginBottom: "1rem" }}>
           <h2 className="section-title">Confirm new payees</h2>
           <p className="bank-meta" style={{ marginBottom: "0.5rem" }}>
-            These showed up in a bill category this month. Confirm to track, or
-            ignore if it is not a bill.
+            These showed up in a bill category this month. Confirm to put them
+            on this month’s list even if it is the first time, or ignore if it
+            is not a bill.
           </p>
           {data.needsConfirm.map((payee) => (
             <div key={`${payee.categoryId}-${payee.payeeLabel}`} className="spending-category-row">
@@ -368,8 +370,8 @@ export function BillsClient() {
         <div className="card" style={{ marginTop: "1rem" }}>
           <h2 className="section-title">Not seen last month</h2>
           <p className="bank-meta" style={{ marginBottom: "0.5rem" }}>
-            Confirmed bills with no payment in the prior calendar month. No date
-            invented — yearly bills sit here until their month.
+            Yearly bills sit here until their month. Confirmed monthly payees
+            stay on the list above even if last month was blank.
           </p>
           {data.notSeenLastMonth.map((payee) => (
             <div key={`${payee.categoryId}-${payee.payeeLabel}`} className="spending-category-row">

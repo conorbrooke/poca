@@ -100,14 +100,18 @@ export function billPayeeOnChecklist(input: {
   lastMonthTotal: number;
   lastOccurrenceMonth: number | null;
   focusMonth: number;
+  thisMonthSpend?: number;
 }): boolean {
   if (input.cadence === "YEARLY") {
+    if ((input.thisMonthSpend ?? 0) > 0) return true;
     return (
       input.lastOccurrenceMonth != null &&
       input.lastOccurrenceMonth === input.focusMonth
     );
   }
-  return input.lastMonthTotal > 0;
+  // Monthly / weekly: Confirm is the opt-in. Stay on the list after a
+  // skipped month, and in the first month the payee appears.
+  return true;
 }
 
 export function isBillPayeePaid(thisMonthSpend: number, expected: number): boolean {
