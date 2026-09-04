@@ -21,12 +21,15 @@ import {
   amortiseRemaining,
   budgetMonthFromPeriod,
   chartWindowFromFocus,
+  computeLoanOfferSummary,
   depreciatedValue,
   emergencyFundTarget,
   formatDateOnly,
   holdingGain,
   holdingMarketValue,
+  isLoanWealthClass,
   monthBounds,
+  medianAmount,
   monthSurplus,
   monthlyPensionInflow,
   previousPeriodWindow,
@@ -1285,10 +1288,39 @@ export class WealthService {
   async updateWealthItem(id: string, input: UpsertWealthItemInput) {
     const userId = await this.demoUserId();
     await this.requireWealthItem(userId, id);
-    return this.prisma.wealthItem.update({
+    const updated = await this.prisma.wealthItem.update({
       where: { id },
       data: this.wealthItemData(userId, input),
     });
+    if (
+      input.class !== "PENSION" &&
+      input.currentValue != null &&
+      input.currentValue > 0
+    ) {
+      const opening = await this.prisma.wealthItemValuation.findFirst({
+        where: { wealthItemId: id, source: WealthValuationSource.OPENING },
+        orderBy: { asOf: "asc" },
+      });
+      const asOf = input.openingAsOf
+        ? prismaDateOnly(input.openingAsOf)
+        : opening?.asOf ?? prismaDateOnly(formatDateOnly(new Date()));
+      if (opening) {
+        await this.prisma.wealthItemValuation.update({
+          where: { id: opening.id },
+          data: { value: input.currentValue, asOf },
+        });
+      } else {
+        await this.prisma.wealthItemValuation.create({
+          data: {
+            wealthItemId: id,
+            asOf,
+            value: input.currentValue,
+            source: WealthValuationSource.OPENING,
+          },
+        });
+      }
+    }
+    return updated;
   }
 
   async deleteWealthItem(id: string) {
@@ -1985,6 +2017,30 @@ export class WealthService {
       }),
       notes: item.notes,
       unverified: !account && (item.ledgers?.length ?? 0) === 0 && valuations.length === 0 && item.class !== "PENSION",
+      loanSummary: isLoanWealthClass(item.class)
+        ? computeLoanOfferSummary({
+            principal: opening,
+            annualInterestRate: item.interestRate
+              ? toNumber(item.interestRate)
+              : null,
+            monthlyPayment:
+              item.minimumPayment != null
+                ? toNumber(item.minimumPayment)
+                : repayments.length > 0
+                  ? medianAmount(
+                      repayments.map((row) =>
+                        Math.abs(
+                          this.fx.toEur(
+                            toNumber(row.transaction.amount),
+                            row.transaction.currency,
+                            rates,
+                          ),
+                        ),
+                      ),
+                    )
+                  : null,
+          })
+        : null,
       trail: (item.ledgers ?? []).map((row) => ({
         transactionId: row.transaction.id,
         role: row.role,

@@ -49,6 +49,107 @@ export type DebtPayoffItem = {
   interestRate: number | null;
 };
 
+export const LOAN_WEALTH_CLASSES = ["LOAN", "MORTGAGE"] as const;
+export type LoanWealthClass = (typeof LOAN_WEALTH_CLASSES)[number];
+
+export function isLoanWealthClass(cls: string): cls is LoanWealthClass {
+  return (LOAN_WEALTH_CLASSES as readonly string[]).includes(cls);
+}
+
+export function loanPrincipalFromTerms(input: {
+  currentValue: number | null;
+  totalCostOfCredit: number | null;
+  totalRepaymentAmount: number | null;
+}): number | null {
+  if (input.currentValue != null && input.currentValue > 0) {
+    return roundCents(input.currentValue);
+  }
+  if (
+    input.totalRepaymentAmount != null &&
+    input.totalCostOfCredit != null &&
+    input.totalRepaymentAmount >= input.totalCostOfCredit
+  ) {
+    return roundCents(input.totalRepaymentAmount - input.totalCostOfCredit);
+  }
+  return null;
+}
+
+export function loanTermMonths(
+  principal: number,
+  monthlyRate: number,
+  payment: number,
+): number | null {
+  if (payment <= 0 || principal <= 0) return null;
+  if (monthlyRate <= 0) return Math.ceil(principal / payment);
+  const interestOnly = principal * monthlyRate;
+  if (payment <= interestOnly) return null;
+  const ratio = 1 - (principal * monthlyRate) / payment;
+  if (ratio <= 0 || ratio >= 1) return null;
+  return Math.ceil(-Math.log(ratio) / Math.log(1 + monthlyRate));
+}
+
+export type LoanOfferSummary = {
+  principal: number;
+  totalCostOfCredit: number | null;
+  totalRepaymentAmount: number | null;
+  variableInterestRate: number | null;
+  variableApr: number | null;
+  monthlyPayment: number | null;
+  termMonths: number | null;
+};
+
+/** Derived loan-offer figures — not persisted; recomputed from principal, rate, and payment. */
+export function computeLoanOfferSummary(input: {
+  principal: number;
+  annualInterestRate: number | null;
+  annualPercentageRate?: number | null;
+  monthlyPayment: number | null;
+}): LoanOfferSummary {
+  const principal = roundCents(Math.max(0, input.principal));
+  const variableInterestRate = input.annualInterestRate;
+  const variableApr =
+    input.annualPercentageRate ?? input.annualInterestRate ?? null;
+  const monthlyPayment =
+    input.monthlyPayment != null && input.monthlyPayment > 0
+      ? roundCents(input.monthlyPayment)
+      : null;
+
+  if (
+    principal <= 0 ||
+    monthlyPayment == null ||
+    input.annualInterestRate == null
+  ) {
+    return {
+      principal,
+      totalCostOfCredit: null,
+      totalRepaymentAmount: null,
+      variableInterestRate,
+      variableApr,
+      monthlyPayment,
+      termMonths: null,
+    };
+  }
+
+  const monthlyRate = input.annualInterestRate / 12;
+  const termMonths = loanTermMonths(principal, monthlyRate, monthlyPayment);
+  const totalRepaymentAmount =
+    termMonths != null ? roundCents(termMonths * monthlyPayment) : null;
+  const totalCostOfCredit =
+    totalRepaymentAmount != null
+      ? roundCents(totalRepaymentAmount - principal)
+      : null;
+
+  return {
+    principal,
+    totalCostOfCredit,
+    totalRepaymentAmount,
+    variableInterestRate,
+    variableApr,
+    monthlyPayment,
+    termMonths,
+  };
+}
+
 export function sortAvalanche<T extends DebtPayoffItem>(items: T[]): T[] {
   return [...items].sort((left, right) => {
     const rateDiff = (right.interestRate ?? 0) - (left.interestRate ?? 0);

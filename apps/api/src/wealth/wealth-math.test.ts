@@ -5,6 +5,7 @@ import {
   billPayeeOnChecklist,
   budgetMonthFromPeriod,
   chartWindowFromFocus,
+  computeLoanOfferSummary,
   depreciatedValue,
   emergencyFundTarget,
   holdingGain,
@@ -177,6 +178,18 @@ describe("wealth math", () => {
 
   it("reduces a loan by principal after monthly interest", () => {
     expect(amortiseRemaining(6500, 0.005, [{ amount: 205 }])).toBe(6327.5);
+  });
+
+  it("derives loan offer totals from principal, rate, and payment", () => {
+    const summary = computeLoanOfferSummary({
+      principal: 6500,
+      annualInterestRate: 0.0865,
+      annualPercentageRate: 0.089,
+      monthlyPayment: 205,
+    });
+    expect(summary.totalRepaymentAmount).toBe(7585);
+    expect(summary.totalCostOfCredit).toBe(1085);
+    expect(summary.termMonths).toBe(37);
   });
 
   it("flex spending is all expenses minus paid bill payees", () => {

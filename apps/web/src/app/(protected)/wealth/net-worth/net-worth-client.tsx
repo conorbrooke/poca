@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { WEALTH_CLASSES, WEALTH_SIDES } from "@poca/shared";
+import { isLoanWealthClass, WEALTH_CLASSES, WEALTH_SIDES } from "@poca/shared";
 import { LineChart } from "../../../../components/line-chart";
+import {
+  LoanTermFields,
+  emptyLoanTermDraft,
+  formatLoanTermsSummary,
+  itemToLoanDraft,
+  loanTermsPayload,
+  loanTermsValidationError,
+} from "../../../../components/loan-term-fields";
+import { LoanOfferSummaryView } from "../../../../components/loan-offer-summary";
 import { apiFetch } from "../../../../lib/api";
 import { formatDate, formatMoney } from "../../../../lib/format";
 
@@ -20,6 +29,15 @@ type Item = {
   minimumPayment: number | null;
   depreciationPercentYearly: number | null;
   notes: string | null;
+  loanSummary?: {
+    principal: number;
+    totalCostOfCredit: number | null;
+    totalRepaymentAmount: number | null;
+    variableInterestRate: number | null;
+    variableApr: number | null;
+    monthlyPayment: number | null;
+    termMonths: number | null;
+  } | null;
   trail: Array<{
     transactionId: string;
     role: string;
@@ -70,7 +88,8 @@ export function NetWorthClient() {
   const [side, setSide] = useState<"ASSET" | "LIABILITY">("ASSET");
   const [cls, setCls] = useState("PROPERTY");
   const [value, setValue] = useState("");
-  const [rate, setRate] = useState("");
+  const [createLoanDraft, setCreateLoanDraft] = useState(emptyLoanTermDraft);
+  const [createMinPayment, setCreateMinPayment] = useState("");
   const [accountId, setAccountId] = useState("");
   const [dep, setDep] = useState("");
   const [openingAsOf, setOpeningAsOf] = useState(
@@ -80,8 +99,9 @@ export function NetWorthClient() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editValue, setEditValue] = useState("");
-  const [editRate, setEditRate] = useState("");
   const [editDep, setEditDep] = useState("");
+  const [editLoanDraft, setEditLoanDraft] = useState(emptyLoanTermDraft);
+  const [editMinPayment, setEditMinPayment] = useState("");
   const [editAccountId, setEditAccountId] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -112,24 +132,44 @@ export function NetWorthClient() {
 
   async function create() {
     setError(null);
+    if (!name.trim()) {
+      setError("Enter a name.");
+      return;
+    }
+    const monthlyPayment =
+      createMinPayment.trim() === "" ? null : Number(createMinPayment);
+    const loanError = isLoanWealthClass(cls)
+      ? loanTermsValidationError(cls, createLoanDraft, monthlyPayment)
+      : value.trim() === "" || Number(value) <= 0
+        ? "Enter an opening value."
+        : null;
+    if (loanError) {
+      setError(loanError);
+      return;
+    }
     try {
+      const loanPayload = isLoanWealthClass(cls)
+        ? loanTermsPayload(cls, createLoanDraft, monthlyPayment)
+        : {
+            currentValue: Number(value),
+            depreciationPercentYearly: dep === "" ? null : Number(dep) / 100,
+          };
       await apiFetch("/wealth/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
+          name: name.trim(),
           side,
           class: cls,
-          currentValue: value === "" ? 0 : Number(value),
           accountId: accountId || null,
-          interestRate: rate === "" ? null : Number(rate) / 100,
-          depreciationPercentYearly: dep === "" ? null : Number(dep) / 100,
           openingAsOf: openingAsOf || new Date().toISOString().slice(0, 10),
+          ...loanPayload,
         }),
       });
       setName("");
       setValue("");
-      setRate("");
+      setCreateLoanDraft(emptyLoanTermDraft());
+      setCreateMinPayment("");
       setDep("");
       setAccountId("");
       await reload();
@@ -142,7 +182,10 @@ export function NetWorthClient() {
     setEditingId(item.id);
     setEditName(item.name);
     setEditValue(String(item.currentValue));
-    setEditRate(item.interestRate != null ? String(item.interestRate * 100) : "");
+    setEditLoanDraft(itemToLoanDraft(item));
+    setEditMinPayment(
+      item.minimumPayment != null ? String(item.minimumPayment) : "",
+    );
     setEditDep(
       item.depreciationPercentYearly != null
         ? String(item.depreciationPercentYearly * 100)
@@ -158,7 +201,24 @@ export function NetWorthClient() {
 
   async function saveEdit(item: Item) {
     setError(null);
+    const monthlyPayment =
+      editMinPayment.trim() === "" ? null : Number(editMinPayment);
+    const loanError = isLoanWealthClass(item.class)
+      ? loanTermsValidationError(item.class, editLoanDraft, monthlyPayment)
+      : editValue.trim() === "" || Number(editValue) <= 0
+        ? "Enter an opening value."
+        : null;
+    if (loanError) {
+      setError(loanError);
+      return;
+    }
     try {
+      const loanPayload = isLoanWealthClass(item.class)
+        ? loanTermsPayload(item.class, editLoanDraft, monthlyPayment)
+        : {
+            currentValue: Number(editValue),
+            depreciationPercentYearly: editDep === "" ? null : Number(editDep) / 100,
+          };
       await apiFetch(`/wealth/items/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -166,11 +226,9 @@ export function NetWorthClient() {
           name: editName,
           side: item.side,
           class: item.class,
-          currentValue: Number(editValue),
           accountId: editAccountId || null,
-          interestRate: editRate === "" ? null : Number(editRate) / 100,
-          depreciationPercentYearly: editDep === "" ? null : Number(editDep) / 100,
           notes: editNotes || null,
+          ...loanPayload,
         }),
       });
       await reload();
@@ -247,35 +305,11 @@ export function NetWorthClient() {
           </select>
           <input
             className="login-input"
-            type="number"
-            placeholder="Opening €"
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-          />
-          <input
-            className="login-input"
             type="date"
             value={openingAsOf}
             onChange={(event) => setOpeningAsOf(event.target.value)}
             aria-label="Opening date"
           />
-          {side === "LIABILITY" ? (
-            <input
-              className="login-input"
-              type="number"
-              placeholder="APR %"
-              value={rate}
-              onChange={(event) => setRate(event.target.value)}
-            />
-          ) : (
-            <input
-              className="login-input"
-              type="number"
-              placeholder="Car dep. % / year"
-              value={dep}
-              onChange={(event) => setDep(event.target.value)}
-            />
-          )}
           {loanAccounts.length > 0 ? (
             <select
               className="login-input"
@@ -294,6 +328,48 @@ export function NetWorthClient() {
             Add
           </button>
         </div>
+        {isLoanWealthClass(cls) ? (
+          <>
+            <LoanTermFields
+              wealthClass={cls}
+              draft={createLoanDraft}
+              onChange={setCreateLoanDraft}
+              openingAsOf={openingAsOf}
+              monthlyPaymentHint={
+                createMinPayment.trim() === "" ? null : Number(createMinPayment)
+              }
+            />
+            <label className="login-label">
+              Monthly repayment (€)
+              <input
+                className="login-input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={createMinPayment}
+                onChange={(event) => setCreateMinPayment(event.target.value)}
+                placeholder="e.g. 205"
+              />
+            </label>
+          </>
+        ) : (
+          <div className="tag-chip-row" style={{ marginTop: "0.75rem" }}>
+            <input
+              className="login-input"
+              type="number"
+              placeholder="Opening €"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+            <input
+              className="login-input"
+              type="number"
+              placeholder="Car dep. % / year"
+              value={dep}
+              onChange={(event) => setDep(event.target.value)}
+            />
+          </div>
+        )}
       </div>
       <div className="spending-category-list">
         {(data?.items ?? []).map((item) => (
@@ -303,11 +379,15 @@ export function NetWorthClient() {
                 <p className="spending-category-name">{item.name}</p>
                 <p className="bank-meta">
                   {item.side.toLowerCase()} · {item.class.toLowerCase().replace("_", " ")}
-                  {item.interestRate != null ? ` · ${(item.interestRate * 100).toFixed(1)}% APR` : ""}
                   {item.estimated ? " · estimated" : ""}
                   {item.unverified ? " · add opening snapshot or transactions" : ""}
                   {item.accountName ? ` · ${item.accountName}` : ""}
                 </p>
+                {formatLoanTermsSummary(item).map((line) => (
+                  <p key={line} className="bank-meta">
+                    {line}
+                  </p>
+                ))}
               </div>
               <p className="spending-category-amount">{formatMoney(item.currentValue)}</p>
               <button
@@ -343,6 +423,9 @@ export function NetWorthClient() {
                 />
               </div>
             ) : null}
+            {item.loanSummary ? (
+              <LoanOfferSummaryView summary={item.loanSummary} compact />
+            ) : null}
             {editing && editing.id === item.id ? (
               <div style={{ marginTop: "0.75rem" }}>
                 <div className="tag-chip-row">
@@ -351,29 +434,6 @@ export function NetWorthClient() {
                     value={editName}
                     onChange={(event) => setEditName(event.target.value)}
                   />
-                  <input
-                    className="login-input"
-                    type="number"
-                    value={editValue}
-                    onChange={(event) => setEditValue(event.target.value)}
-                  />
-                  {item.side === "LIABILITY" ? (
-                    <input
-                      className="login-input"
-                      type="number"
-                      placeholder="APR %"
-                      value={editRate}
-                      onChange={(event) => setEditRate(event.target.value)}
-                    />
-                  ) : (
-                    <input
-                      className="login-input"
-                      type="number"
-                      placeholder="Dep % / year"
-                      value={editDep}
-                      onChange={(event) => setEditDep(event.target.value)}
-                    />
-                  )}
                   <select
                     className="login-input"
                     value={editAccountId}
@@ -394,6 +454,45 @@ export function NetWorthClient() {
                     Save
                   </button>
                 </div>
+                {isLoanWealthClass(item.class) ? (
+                  <>
+                    <LoanTermFields
+                      wealthClass={item.class}
+                      draft={editLoanDraft}
+                      onChange={setEditLoanDraft}
+                      monthlyPaymentHint={
+                        editMinPayment.trim() === "" ? null : Number(editMinPayment)
+                      }
+                    />
+                    <label className="login-label">
+                      Monthly repayment (€)
+                      <input
+                        className="login-input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editMinPayment}
+                        onChange={(event) => setEditMinPayment(event.target.value)}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <div className="tag-chip-row" style={{ marginTop: "0.5rem" }}>
+                    <input
+                      className="login-input"
+                      type="number"
+                      value={editValue}
+                      onChange={(event) => setEditValue(event.target.value)}
+                    />
+                    <input
+                      className="login-input"
+                      type="number"
+                      placeholder="Dep % / year"
+                      value={editDep}
+                      onChange={(event) => setEditDep(event.target.value)}
+                    />
+                  </div>
+                )}
                 {item.side === "ASSET" ? (
                   <div className="tag-chip-row" style={{ marginTop: "0.5rem" }}>
                     <input

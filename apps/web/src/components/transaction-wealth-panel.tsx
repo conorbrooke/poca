@@ -7,7 +7,13 @@ import {
   type TransactionWealthItemOption,
 } from "@poca/shared";
 import { apiFetch } from "../lib/api";
-import { formatDate, formatMoney } from "../lib/format";
+import { formatDate } from "../lib/format";
+import {
+  LoanTermFields,
+  emptyLoanTermDraft,
+  loanTermsPayload,
+  loanTermsValidationError,
+} from "./loan-term-fields";
 
 type LedgerRole = "PURCHASE" | "OPENING" | "REPAYMENT" | "INCREASE";
 
@@ -40,6 +46,7 @@ export function TransactionWealthPanel({
   const [context, setContext] = useState<TransactionWealthContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [side, setSide] = useState<"ASSET" | "LIABILITY">(
     amount < 0 ? "LIABILITY" : "ASSET",
   );
@@ -48,8 +55,11 @@ export function TransactionWealthPanel({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState(payeeLabel ?? description.slice(0, 60));
   const [newClass, setNewClass] = useState("LOAN");
-  const [newRate, setNewRate] = useState("");
+  const [loanDraft, setLoanDraft] = useState(emptyLoanTermDraft);
+  const [assetValue, setAssetValue] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const monthlyPaymentHint = amount < 0 ? Math.abs(amount) : null;
 
   async function reload() {
     setLoading(true);
@@ -108,12 +118,14 @@ export function TransactionWealthPanel({
     if (!existingItemId) return;
     setBusy(true);
     setError(null);
+    setSavedMessage(null);
     try {
       await apiFetch(`/wealth/transactions/${transactionId}/ledger`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: existingItemId, role }),
       });
+      setSavedMessage("Linked to net worth.");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not attach transaction");
@@ -125,6 +137,7 @@ export function TransactionWealthPanel({
   async function detach() {
     setBusy(true);
     setError(null);
+    setSavedMessage(null);
     try {
       await apiFetch(`/wealth/transactions/${transactionId}/ledger`, {
         method: "DELETE",
@@ -141,7 +154,26 @@ export function TransactionWealthPanel({
     if (!newName.trim()) return;
     setBusy(true);
     setError(null);
+    setSavedMessage(null);
+
+    const validationError =
+      side === "LIABILITY"
+        ? loanTermsValidationError(newClass, loanDraft, monthlyPaymentHint)
+        : assetValue.trim() === "" || Number(assetValue) <= 0
+          ? "Enter an opening value for this asset."
+          : null;
+    if (validationError) {
+      setError(validationError);
+      setBusy(false);
+      return;
+    }
+
     try {
+      const loanPayload =
+        side === "LIABILITY"
+          ? loanTermsPayload(newClass, loanDraft, monthlyPaymentHint)
+          : { currentValue: Number(assetValue) };
+
       const created = await apiFetch<{ id: string }>("/wealth/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -149,9 +181,8 @@ export function TransactionWealthPanel({
           name: newName.trim(),
           side,
           class: newClass,
-          currentValue: Math.abs(amount),
-          interestRate: newRate === "" ? null : Number(newRate) / 100,
           openingAsOf: bookedAt.slice(0, 10),
+          ...loanPayload,
         }),
       });
       await apiFetch(`/wealth/transactions/${transactionId}/ledger`, {
@@ -160,6 +191,7 @@ export function TransactionWealthPanel({
         body: JSON.stringify({ itemId: created.id, role }),
       });
       setCreating(false);
+      setSavedMessage("Created and linked to net worth.");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create item");
@@ -301,22 +333,29 @@ export function TransactionWealthPanel({
                 </select>
               </label>
               {side === "LIABILITY" ? (
+                <LoanTermFields
+                  wealthClass={newClass}
+                  draft={loanDraft}
+                  onChange={setLoanDraft}
+                  openingAsOf={bookedAt.slice(0, 10)}
+                  compact
+                  monthlyPaymentHint={monthlyPaymentHint}
+                />
+              ) : (
                 <label className="login-label">
-                  Interest rate (%)
+                  Opening value (€)
                   <input
                     className="login-input"
                     type="number"
                     min="0"
                     step="0.01"
-                    value={newRate}
-                    onChange={(event) => setNewRate(event.target.value)}
-                    placeholder="Optional"
+                    value={assetValue}
+                    onChange={(event) => setAssetValue(event.target.value)}
                   />
                 </label>
-              ) : null}
+              )}
               <p className="bank-meta">
-                Opening value {formatMoney(Math.abs(amount))} on{" "}
-                {formatDate(bookedAt)} · role {role.toLowerCase()}
+                Opening date {formatDate(bookedAt)} · role {role.toLowerCase()}
               </p>
               <button
                 type="button"
@@ -331,6 +370,7 @@ export function TransactionWealthPanel({
         </>
       )}
 
+      {savedMessage ? <p className="alert alert-warning">{savedMessage}</p> : null}
       {error ? <p className="alert alert-error">{error}</p> : null}
     </div>
   );
